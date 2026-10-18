@@ -431,6 +431,19 @@ detect_system() {
         die "Container environment detected. Containers are not supported."
     fi
 
+    if [ -r /etc/os-release ]; then
+        # shellcheck disable=SC1091
+        . /etc/os-release
+        pretty=${PRETTY_NAME:-Linux}
+
+        if [ "${ID:-}" = "arch" ]; then
+            err "Arch Linux detected. This is the generic Linux version."
+            err "Use the Arch version instead: sudo ./Github520-Arch.sh install"
+            err "After installation, manage it with: sudo github520-arch"
+            die "Generic github520-deploy.sh does not support Arch Linux."
+        fi
+    fi
+
     if command -v systemd-detect-virt >/dev/null 2>&1; then
         virt=$(systemd-detect-virt 2>/dev/null || true)
         case "$virt" in
@@ -458,12 +471,6 @@ detect_system() {
                 warn "Continuing, but network changes may affect the host."
                 ;;
         esac
-    fi
-
-    if [ -r /etc/os-release ]; then
-        # shellcheck disable=SC1091
-        . /etc/os-release
-        pretty=${PRETTY_NAME:-Linux}
     fi
 
     if ! command -v systemctl >/dev/null 2>&1 || [ ! -d /run/systemd/system ]; then

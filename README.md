@@ -5,7 +5,7 @@
 | 脚本 | 目标系统 | CLI |
 |---|---|---|
 | **Github520-Arch.sh** | Arch Linux（`ID=arch`） | `github520-arch` |
-| **github520-deploy.sh** | 通用 Linux（systemd） | `github520-deploy` |
+| **github520-deploy.sh** | 通用 Linux（非 Arch，systemd） | `github520-deploy` |
 
 两者都提供：
 
@@ -60,7 +60,7 @@ sudo ./Github520-Arch.sh install
 ### 使用 `github520-deploy.sh`，如果：
 
 - 系统是 Debian、Ubuntu、Fedora、CentOS、Rocky、AlmaLinux、openSUSE 等；
-- 需要通用 Linux 支持；
+- 需要通用 Linux（非 Arch）支持；
 - 更常使用 ifupdown 管理网络；
 - 需要显式拒绝 WSL/Docker 容器，并对 KVM/QEMU/VMware/Hyper-V 虚拟机给出警告。
 
@@ -74,7 +74,7 @@ sudo ./github520-deploy.sh install
 
 | 项目 | Github520-Arch.sh | github520-deploy.sh |
 |---|---|---|
-| 系统检查 | 仅 Arch Linux（`ID=arch`） | 任意 Linux（需 systemd） |
+| 系统检查 | 仅 Arch Linux（`ID=arch`） | 非 Arch Linux（需 systemd）；检测到 Arch 会强制退出 |
 | WSL/容器 | 未单独判断；通常因 systemd 检查失败而退出 | WSL、Docker、Podman、LXC 等直接退出 |
 | 虚拟机 | 无单独 VM 警告 | KVM/QEMU/VMware/Hyper-V 等仅警告并继续 |
 | 静态网络优先级 | NetworkManager → systemd-networkd → ifupdown | **ifupdown → NetworkManager → systemd-networkd** |
@@ -136,6 +136,10 @@ sudo ./github520-deploy.sh install
 sudo github520-deploy status
 sudo github520-deploy update
 ```
+
+> 通用版检测到 Arch Linux 会强制退出，并提示改用 `Github520-Arch.sh`。
+>
+> Arch 用户请不要在通用版上继续。
 
 > 不带 `install` 参数只显示状态和简短帮助，不会安装或重装。
 >
@@ -226,6 +230,7 @@ Systemd 内部模式：
 root / sudo 权限检查
   ↓
 Linux 检查
+  ├─ Arch Linux → 退出，提示改用 Github520-Arch.sh
   ├─ WSL / Docker / Podman / LXC → 退出
   └─ KVM / QEMU / VMware / Hyper-V → 警告并继续
   ↓
@@ -511,6 +516,16 @@ sudo ./github520-deploy.sh install
 
 不是。两个脚本均为 **v0.1 beta**，请先备份并反馈问题。
 
+### Q18: 通用版提示 “Arch Linux detected” 怎么办？
+
+说明你在 Arch Linux 上运行了通用版。脚本会强制退出，避免两个版本重复修改 hosts。请改用 Arch 版：
+
+```bash
+sudo ./Github520-Arch.sh install
+```
+
+安装后使用 `sudo github520-arch ...` 管理。
+
 ---
 
 # English
@@ -520,7 +535,7 @@ This repository contains two GitHub520 hosts managers:
 | Script | Target | CLI |
 |---|---|---|
 | **Github520-Arch.sh** | Arch Linux (`ID=arch`) | `github520-arch` |
-| **github520-deploy.sh** | Generic Linux (systemd) | `github520-deploy` |
+| **github520-deploy.sh** | Generic Linux (non-Arch, systemd) | `github520-deploy` |
 
 Both provide:
 
@@ -538,7 +553,7 @@ Both provide:
 
 ## Which script?
 
-Use `Github520-Arch.sh` on Arch Linux. Use `github520-deploy.sh` on other Linux distributions, especially systems using ifupdown.
+Use `Github520-Arch.sh` on Arch Linux. Use `github520-deploy.sh` on other Linux distributions, especially systems using ifupdown. The generic script exits on Arch and points to the Arch version.
 
 Do **not** enable both timers on the same machine; both modify `/etc/hosts`.
 
@@ -546,7 +561,7 @@ Do **not** enable both timers on the same machine; both modify `/etc/hosts`.
 
 | Item | Github520-Arch.sh | github520-deploy.sh |
 |---|---|---|
-| OS check | Arch only (`ID=arch`) | Any Linux with systemd |
+| OS check | Arch only (`ID=arch`) | Non-Arch Linux with systemd; exits on Arch |
 | WSL/containers | no explicit check; systemd check usually rejects | WSL/Docker/Podman/LXC exit |
 | Virtual machines | no separate VM warning | KVM/QEMU/VMware/Hyper-V warn and continue |
 | Static network priority | NetworkManager → networkd → ifupdown | **ifupdown → NetworkManager → networkd** |
@@ -641,6 +656,7 @@ Replace `<cli>` with `github520-arch` or `github520-deploy`:
 1. Welcome.
 2. Root/sudo check.
 3. Linux check:
+   - Arch Linux → exit and point to `Github520-Arch.sh`;
    - WSL/Docker/Podman/LXC → exit;
    - KVM/QEMU/VMware/Hyper-V → warn and continue.
 4. Back up original `/etc/hosts` (first install).
@@ -810,6 +826,16 @@ sudo ./github520-deploy.sh install
 
 `reinstall` only redeploys the installed CLI; it does not download a new version.
 
-### 17. Is this stable?
+### 17. The generic script says “Arch Linux detected”
+
+You are running the generic script on Arch Linux. It exits to avoid conflicting with the Arch version. Use:
+
+```bash
+sudo ./Github520-Arch.sh install
+```
+
+Then manage it with `sudo github520-arch ...`.
+
+### 18. Is this stable?
 
 No. Both scripts are **v0.1 beta**. Keep backups and report issues.
