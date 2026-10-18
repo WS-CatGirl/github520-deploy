@@ -16,13 +16,18 @@
 #
 # What this script does:
 #   0. Ensures it runs with root privileges (re-executes itself through sudo).
-#   1. Refuses non-Linux systems, WSL, containers and virtual machines.
+#   1. Refuses non-Linux systems, WSL and containers. Virtual machines produce
+#      a warning and require confirmation (or --allow-vm / --yes).
 #   2. On Btrfs with snapper, asks for a snapshot (30 second countdown),
 #      creates it, and aborts on timeout, error or "no snapshot".
 #   3. Detects the network management backend, verifies that GitHub520 is
 #      reachable, downloads its hosts block from the first working source,
 #      backs up /etc/hosts and installs it.
-#   4. Optionally configures a static IPv4 address and DNS servers.
+#   4. Optionally configures a static IPv4 address and/or DNS servers when
+#      --static-ip or --dns-only is given.
+#
+# Default action: update /etc/hosts only. Network changes are opt-in.
+# Run with --help for all options.
 #
 # Requirements: bash 4+, coreutils, util-linux (findmnt), iproute2, curl.
 # =============================================================================
@@ -79,6 +84,30 @@ STATIC_PREFIX=""
 DNS_SERVERS=()
 NET_BACKEND_DESC=""
 
+DRY_RUN=0
+ASSUME_YES=0
+NO_SNAPSHOT=0
+ALLOW_VM=0
+VM_DETECTED=0
+VM_TYPE=""
+NETWORK_MODE="hosts"
+NETWORK_MODE_SET=""
+CUSTOM_SOURCES=()
+
+NETWORK_ROLLBACK_PENDING=0
+NM_OLD_METHOD=""
+NM_OLD_ADDR=""
+NM_OLD_GATEWAY=""
+NM_OLD_DNS=""
+NM_OLD_IGNORE_DNS=""
+NETPLAN_FILE=""
+NETPLAN_OLD=""
+NETWORKD_FILE=""
+NETWORKD_OLD=""
+IFUPDOWN_SRC=""
+IFUPDOWN_OLD=""
+RESOLV_BACKUP=""
+
 if [ -t 1 ]; then
     C_RESET=$'\033[0m'
     C_INFO=$'\033[1;34m'
@@ -117,12 +146,174 @@ die() {
     exit 1
 }
 
+usage() {
+    cat <<'EOF'
+GitHub520 deploy for native Linux
+
+Usage:
+  github520-deploy.sh [OPTIONS]
+
+Default:
+  Update /etc/hosts only. Static IP and DNS changes are opt-in.
+
+Options:
+  -h, --help             Show this help and exit.
+  -y, --yes              Automatically answer yes to confirmation prompts
+                         (VM warning and network-change confirmation).
+      --dry-run          Detect, download and validate, but do not create a
+                         snapshot, write /etc/hosts, change network settings
+                         or flush DNS caches. Does not require root.
+      --no-snapshot      Skip the Btrfs/snapper snapshot step entirely.
+      --hosts-only       Update /etc/hosts only. This is the default.
+      --dns-only         Update /etc/hosts, then change DNS servers only.
+                         The current IP address and gateway are kept.
+      --static-ip        Update /etc/hosts, then configure a static IPv4
+                         address, gateway and optional DNS servers.
+      --source URL       Use this GitHub520 source. May be repeated; when
+                         given, the built-in source list is replaced.
+      --allow-vm         Continue on a detected virtual machine without
+                         asking. Docker/WSL/container environments are still
+                         rejected.
+      --                 End of options.
+
+Examples:
+  ./github520-deploy.sh
+      Update hosts only.
+
+  sudo ./github520-deploy.sh --no-snapshot --yes
+      Update hosts, skip snapshots, auto-confirm the VM warning.
+
+  sudo ./github520-deploy.sh --dns-only
+      Update hosts and change DNS servers only.
+
+  sudo ./github520-deploy.sh --static-ip
+      Update hosts and configure a static IPv4 address.
+
+  ./github520-deploy.sh --dry-run --static-ip
+      Show what would be done without changing anything.
+
+Exit status:
+  0  success (or --help / dry-run completed)
+  1  runtime failure or user aborted
+  2  invalid command-line usage
+EOF
+}
+
+add_source() {
+    local url=$1
+
+    case "$url" in
+        http://*|https://*) ;;
+        *)
+            err "--source requires an http:// or https:// URL: $url"
+            exit 2
+            ;;
+    esac
+    case "$url" in
+        *[[:space:]]*)
+            err "--source URL must not contain whitespace: $url"
+            exit 2
+            ;;
+    esac
+
+    CUSTOM_SOURCES+=("$url")
+}
+
+set_network_mode() {
+    local mode=$1
+
+    if [ -n "$NETWORK_MODE_SET" ] && [ "$NETWORK_MODE_SET" != "$mode" ]; then
+        err "--hosts-only, --dns-only and --static-ip are mutually exclusive."
+        exit 2
+    fi
+
+    NETWORK_MODE=$mode
+    NETWORK_MODE_SET=$mode
+}
+
+parse_args() {
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            -h|--help)
+                usage
+                exit 0
+                ;;
+            -y|--yes)
+                ASSUME_YES=1
+                ;;
+            --dry-run)
+                DRY_RUN=1
+                ;;
+            --no-snapshot)
+                NO_SNAPSHOT=1
+                ;;
+            --hosts-only)
+                set_network_mode hosts
+                ;;
+            --dns-only)
+                set_network_mode dns
+                ;;
+            --static-ip)
+                set_network_mode static
+                ;;
+            --allow-vm)
+                ALLOW_VM=1
+                ;;
+            --source)
+                shift
+                if [ "$#" -eq 0 ]; then
+                    err "--source requires a URL."
+                    exit 2
+                fi
+                add_source "$1"
+                ;;
+            --source=*)
+                add_source "${1#*=}"
+                ;;
+            --)
+                shift
+                if [ "$#" -gt 0 ]; then
+                    err "Unexpected argument after --: $*"
+                    exit 2
+                fi
+                break
+                ;;
+            -*)
+                err "Unknown option: $1"
+                err "Run '$SCRIPT_NAME --help' for usage."
+                exit 2
+                ;;
+            *)
+                err "Unexpected argument: $1"
+                err "Run '$SCRIPT_NAME --help' for usage."
+                exit 2
+                ;;
+        esac
+        shift
+    done
+
+    if [ "${#CUSTOM_SOURCES[@]}" -gt 0 ]; then
+        HOSTS_SOURCES=("${CUSTOM_SOURCES[@]}")
+    fi
+}
+
 # -----------------------------------------------------------------------------
 # Cleanup / rollback
 # -----------------------------------------------------------------------------
 cleanup() {
     local rc=$?
     trap - ERR
+
+    if [ "${NETWORK_ROLLBACK_PENDING:-0}" -eq 1 ]; then
+        NETWORK_ROLLBACK_PENDING=0
+        warn "Deployment did not complete; rolling back network changes."
+        if rollback_network_config; then
+            log "Previous network configuration restored."
+        else
+            warn "Network rollback was incomplete. Check the backups in '$NET_BACKUP_DIR'."
+        fi
+    fi
+
     if [ "$HOSTS_WRITTEN" -eq 1 ] && [ "$HOSTS_COMMITTED" -ne 1 ] &&
        [ -n "$HOSTS_BACKUP" ] && [ -f "$HOSTS_BACKUP" ]; then
         warn "Deployment did not complete; restoring $HOSTS_FILE from backup."
@@ -148,6 +339,7 @@ on_error() {
 trap cleanup EXIT
 trap 'on_error "$LINENO"' ERR
 trap 'exit 130' INT TERM
+trap 'exit 129' HUP
 
 # -----------------------------------------------------------------------------
 # Step 0: privileges
@@ -229,26 +421,53 @@ detect_os() {
 
     if command -v systemd-detect-virt >/dev/null 2>&1; then
         virt=$(systemd-detect-virt 2>/dev/null || true)
-        if [ -n "$virt" ] && [ "$virt" != "none" ]; then
-            err "Virtual machine or container environment detected: $virt."
-            err "This script only runs on native Linux installations."
-            exit 1
-        fi
+        case "$virt" in
+            ""|none)
+                ;;
+            docker|podman|lxc|lxc-libvirt|systemd-nspawn|openvz|rkt|proot|pouch|wsl|container-other)
+                err "Container environment detected: $virt. Containers are not supported."
+                exit 1
+                ;;
+            *)
+                VM_DETECTED=1
+                VM_TYPE=$virt
+                ;;
+        esac
     fi
 
-    dmi=$(
-        {
-            cat /sys/class/dmi/id/product_name 2>/dev/null || true
-            cat /sys/class/dmi/id/sys_vendor 2>/dev/null || true
-        } | tr '\n' ' '
-    )
-    case "${dmi,,}" in
-        *virtualbox*|*vmware*|*kvm*|*qemu*|*hyper-v*|*xen*|*parallels*|*bochs*)
-            err "Virtual machine detected through DMI data: $dmi"
-            err "This script only runs on native Linux installations."
-            exit 1
-            ;;
-    esac
+    if [ "$VM_DETECTED" -eq 0 ]; then
+        dmi=$(
+            {
+                cat /sys/class/dmi/id/product_name 2>/dev/null || true
+                cat /sys/class/dmi/id/sys_vendor 2>/dev/null || true
+            } | tr '\n' ' '
+        )
+        case "${dmi,,}" in
+            *virtualbox*|*vmware*|*kvm*|*qemu*|*hyper-v*|*xen*|*parallels*|*bochs*)
+                VM_DETECTED=1
+                VM_TYPE="DMI: $dmi"
+                ;;
+        esac
+    fi
+
+    if [ "$VM_DETECTED" -eq 1 ]; then
+        warn "Virtual machine detected: $VM_TYPE."
+        warn "This script is intended for native Linux. Network changes made inside a VM can affect the host."
+
+        if [ "$DRY_RUN" -eq 1 ]; then
+            ok "Dry run: continuing on this virtual machine without making changes."
+        elif [ "$ALLOW_VM" -eq 1 ]; then
+            ok "Continuing on this virtual machine because --allow-vm was given."
+        elif [ "$ASSUME_YES" -eq 1 ]; then
+            ok "Continuing on this virtual machine because --yes was given."
+        elif [ ! -t 0 ]; then
+            die "Virtual machine detected and no interactive terminal is available. Re-run with --allow-vm or --yes to continue."
+        elif confirm_action "Continue deployment inside this virtual machine?"; then
+            ok "Continuing on this virtual machine."
+        else
+            die "Deployment aborted because the environment is a virtual machine."
+        fi
+    fi
 
     pretty=""
     if [ -r /etc/os-release ]; then
@@ -375,6 +594,18 @@ read_snapshot_choice() {
 
 detect_filesystem_and_snapshot() {
     local root_fs cfg_csv subvol_count
+
+    if [ "$NO_SNAPSHOT" -eq 1 ]; then
+        log "Snapshot creation disabled by --no-snapshot."
+        SNAPSHOT_DONE="skipped (--no-snapshot)"
+        return 0
+    fi
+
+    if [ "$DRY_RUN" -eq 1 ]; then
+        log "Dry run: snapshot detection and creation will be skipped."
+        SNAPSHOT_DONE="dry run (no snapshot created)"
+        return 0
+    fi
 
     root_fs=$(findmnt -n -o FSTYPE -T / 2>/dev/null || true)
     if [ -z "$root_fs" ]; then
@@ -512,7 +743,7 @@ detect_default_route() {
         die "No IPv4 default route is present. Connect the machine to a network and retry."
     fi
 
-    read -r -a fields <<< "$route"
+    IFS=' ' read -r -a fields <<< "$route"
     for ((i = 0; i < ${#fields[@]}; i++)); do
         case "${fields[i]}" in
             via) GATEWAY=${fields[i + 1]:-} ;;
@@ -596,6 +827,30 @@ validate_hosts_block() {
     return 0
 }
 
+count_github520_entries() {
+    local file=$1
+
+    awk '
+        {
+            line = tolower($0)
+            if (line ~ /^[[:space:]]*#[[:space:]]*github520[[:space:]]+host[[:space:]]+start/) {
+                in_block = 1
+                next
+            }
+            if (line ~ /^[[:space:]]*#[[:space:]]*github520[[:space:]]+host[[:space:]]+end/) {
+                in_block = 0
+                next
+            }
+        }
+        in_block && $1 ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ {
+            count++
+        }
+        END {
+            print count + 0
+        }
+    ' "$file"
+}
+
 fetch_hosts_block() {
     local out="$TMP_DIR/hosts.remote"
     local try="$TMP_DIR/hosts.remote.try"
@@ -649,6 +904,12 @@ fetch_hosts_block() {
 # -----------------------------------------------------------------------------
 backup_hosts_file() {
     local stamp
+
+    if [ "$DRY_RUN" -eq 1 ]; then
+        log "Dry run: would back up $HOSTS_FILE."
+        HOSTS_BACKUP="(dry run: no backup created)"
+        return 0
+    fi
 
     if [ ! -f "$HOSTS_FILE" ]; then
         die "$HOSTS_FILE does not exist."
@@ -717,6 +978,16 @@ build_new_hosts() {
 install_new_hosts() {
     local attrs
 
+    if [ "$DRY_RUN" -eq 1 ]; then
+        HOSTS_ENTRY_COUNT=$(count_github520_entries "$TMP_DIR/hosts.new")
+        log "Dry run: would write $HOSTS_ENTRY_COUNT host mappings to $HOSTS_FILE."
+        if command -v diff >/dev/null 2>&1; then
+            log "Dry run: proposed diff (first 80 lines):"
+            diff -u -- "$HOSTS_FILE" "$TMP_DIR/hosts.new" | sed -n '1,80p' || true
+        fi
+        return 0
+    fi
+
     if [ ! -w "$HOSTS_FILE" ]; then
         die "$HOSTS_FILE is not writable, even with root privileges."
     fi
@@ -741,7 +1012,7 @@ install_new_hosts() {
         die "Verification failed: the GitHub520 block is missing from $HOSTS_FILE."
     fi
 
-    HOSTS_ENTRY_COUNT=$(grep -cE '^[[:space:]]*([0-9]{1,3}\.){3}[0-9]{1,3}[[:space:]]+[A-Za-z0-9._-]+' "$HOSTS_FILE" || true)
+    HOSTS_ENTRY_COUNT=$(count_github520_entries "$HOSTS_FILE")
     if [ "$HOSTS_ENTRY_COUNT" -lt "$HOSTS_DOWNLOAD_ENTRIES" ]; then
         die "Verification failed: expected at least $HOSTS_DOWNLOAD_ENTRIES entries, found $HOSTS_ENTRY_COUNT."
     fi
@@ -842,6 +1113,22 @@ prompt_read() {
         die "Failed to read input; an interactive terminal is required."
     fi
     printf -v "$__var" '%s' "$__value"
+}
+
+confirm_action() {
+    local prompt=$1 answer=""
+
+    if [ "$ASSUME_YES" -eq 1 ]; then
+        log "Auto-confirmed (--yes): $prompt"
+        return 0
+    fi
+
+    require_tty
+    prompt_read answer "$prompt [y/N]: "
+    case "$answer" in
+        y|Y|yes|YES|Yes) return 0 ;;
+        *) return 1 ;;
+    esac
 }
 
 join_dns_csv() {
@@ -990,19 +1277,72 @@ create_network_backup_dir() {
     log "Network configuration backups will be stored in: $NET_BACKUP_DIR"
 }
 
+nm_connection_name() {
+    local uuid=$1
+    nmcli -t -f UUID,NAME connection show 2>/dev/null |
+        awk -F: -v u="$uuid" '$1 == u {print $2; exit}' || true
+}
+
+nm_get() {
+    local uuid=$1 field=$2 out=""
+
+    out=$(nmcli -g "$field" connection show "$uuid" 2>/dev/null || true)
+    out=${out//$'\n'/,}
+    out=${out// | /,}
+    out=${out//\\:/:}
+    out=${out%,}
+    printf '%s' "$out"
+}
+
+capture_nm_state() {
+    local uuid=$1
+
+    NM_OLD_METHOD=$(nm_get "$uuid" ipv4.method)
+    NM_OLD_ADDR=$(nm_get "$uuid" ipv4.addresses)
+    NM_OLD_GATEWAY=$(nm_get "$uuid" ipv4.gateway)
+    NM_OLD_DNS=$(nm_get "$uuid" ipv4.dns)
+    NM_OLD_IGNORE_DNS=$(nm_get "$uuid" ipv4.ignore-auto-dns)
+}
+
+restore_networkmanager() {
+    local uuid=$BACKEND_ID
+
+    if [ -z "$uuid" ] || [ -z "$NM_OLD_METHOD" ]; then
+        warn "No saved NetworkManager state is available for rollback."
+        return 1
+    fi
+
+    log "Restoring NetworkManager connection '$uuid' to its previous settings..."
+
+    if [ "$NM_OLD_METHOD" = "manual" ]; then
+        nmcli connection modify "$uuid" ipv4.method manual || return 1
+        nmcli connection modify "$uuid" \
+            ipv4.addresses "$NM_OLD_ADDR" \
+            ipv4.gateway "$NM_OLD_GATEWAY" \
+            ipv4.dns "$NM_OLD_DNS" || return 1
+    else
+        nmcli connection modify "$uuid" ipv4.method "$NM_OLD_METHOD" || return 1
+        nmcli connection modify "$uuid" \
+            ipv4.addresses "" ipv4.gateway "" || return 1
+        nmcli connection modify "$uuid" ipv4.dns "$NM_OLD_DNS" || return 1
+    fi
+
+    nmcli connection modify "$uuid" ipv4.ignore-auto-dns "${NM_OLD_IGNORE_DNS:-no}" || return 1
+    nmcli connection up "$uuid" || return 1
+}
+
 apply_networkmanager() {
-    local uuid=$1 dns_csv con_name
+    local uuid=$1 dns_csv
     local -a cmd=()
 
-    con_name=$(nmcli -t -f UUID,NAME connection show 2>/dev/null |
-        awk -F: -v u="$uuid" '$1 == u {print $2; exit}' || true)
+    capture_nm_state "$uuid"
 
-    if ! nmcli -t -f ipv4.method,ipv4.addresses,ipv4.gateway,ipv4.dns \
+    if ! nmcli -t -f ipv4.method,ipv4.addresses,ipv4.gateway,ipv4.dns,ipv4.ignore-auto-dns \
         connection show "$uuid" > "$NET_BACKUP_DIR/NetworkManager-${uuid}.txt" 2>&1; then
         warn "Could not save the previous NetworkManager settings."
     fi
 
-    log "Configuring NetworkManager connection '${con_name:-$uuid}'..."
+    log "Configuring NetworkManager connection '$(nm_connection_name "$uuid")'..."
 
     cmd=(connection modify "$uuid" ipv4.method manual
         ipv4.addresses "$STATIC_CIDR" ipv4.gateway "$GATEWAY")
@@ -1020,7 +1360,31 @@ apply_networkmanager() {
         die "Failed to activate NetworkManager connection '$uuid'. Previous settings: $NET_BACKUP_DIR/NetworkManager-${uuid}.txt"
     fi
 
-    NET_BACKEND_DESC="NetworkManager (connection ${con_name:-$uuid})"
+    NET_BACKEND_DESC="NetworkManager (connection $(nm_connection_name "$uuid"))"
+}
+
+apply_networkmanager_dns() {
+    local uuid=$1 dns_csv
+
+    capture_nm_state "$uuid"
+
+    if ! nmcli -t -f ipv4.method,ipv4.addresses,ipv4.gateway,ipv4.dns,ipv4.ignore-auto-dns \
+        connection show "$uuid" > "$NET_BACKUP_DIR/NetworkManager-${uuid}.txt" 2>&1; then
+        warn "Could not save the previous NetworkManager settings."
+    fi
+
+    dns_csv=$(join_dns_csv)
+    log "Changing DNS only on NetworkManager connection '$(nm_connection_name "$uuid")'..."
+
+    if ! nmcli connection modify "$uuid" ipv4.dns "$dns_csv" ipv4.ignore-auto-dns yes; then
+        die "Failed to modify DNS settings for NetworkManager connection '$uuid'."
+    fi
+
+    if ! nmcli connection up "$uuid"; then
+        die "Failed to reactivate NetworkManager connection '$uuid'."
+    fi
+
+    NET_BACKEND_DESC="NetworkManager (connection $(nm_connection_name "$uuid"))"
 }
 
 netplan_supports_routes() {
@@ -1059,6 +1423,9 @@ apply_netplan() {
             die "Failed to back up the existing $file."
         fi
     fi
+
+    NETPLAN_FILE=$file
+    NETPLAN_OLD=$old
 
     if [ "${#DNS_SERVERS[@]}" -gt 0 ]; then
         dns_yaml=$(join_dns_yaml)
@@ -1100,6 +1467,47 @@ apply_netplan() {
     NET_BACKEND_DESC="netplan ($file)"
 }
 
+apply_netplan_dns() {
+    local file="/etc/netplan/90-github520-dns.yaml"
+    local old=""
+    local dns_yaml=""
+
+    if [ -e "$file" ]; then
+        old="$NET_BACKUP_DIR/90-github520-dns.yaml"
+        if ! cp -a -- "$file" "$old"; then
+            die "Failed to back up the existing $file."
+        fi
+    fi
+
+    NETPLAN_FILE=$file
+    NETPLAN_OLD=$old
+    dns_yaml=$(join_dns_yaml)
+
+    log "Writing netplan DNS-only configuration: $file"
+    {
+        printf 'network:\n'
+        printf '  version: 2\n'
+        printf '  ethernets:\n'
+        printf '    "%s":\n' "$IFACE"
+        printf '      nameservers:\n'
+        printf '        addresses: [%s]\n' "$dns_yaml"
+    } > "$file"
+
+    chmod 600 "$file"
+
+    if ! netplan generate; then
+        restore_netplan_file "$file" "$old"
+        die "netplan generate failed; the previous configuration was restored."
+    fi
+
+    if ! netplan apply; then
+        restore_netplan_file "$file" "$old"
+        die "netplan apply failed; the previous configuration was restored."
+    fi
+
+    NET_BACKEND_DESC="netplan DNS-only ($file)"
+}
+
 restore_networkd_file() {
     local file=$1 old=$2
 
@@ -1133,6 +1541,9 @@ apply_networkd() {
             die "Failed to back up the existing $file."
         fi
     fi
+
+    NETWORKD_FILE=$file
+    NETWORKD_OLD=$old
 
     log "Writing systemd-networkd configuration: $file"
     {
@@ -1168,6 +1579,59 @@ apply_networkd() {
     NET_BACKEND_DESC="systemd-networkd ($file)"
 }
 
+apply_networkd_dns() {
+    local dir="/etc/systemd/network"
+    local file="$dir/99-github520-dns-${IFACE}.network"
+    local old=""
+    local d
+
+    if [ ! -d "$dir" ]; then
+        die "systemd-networkd is active but $dir does not exist."
+    fi
+
+    if [ -e "$file" ]; then
+        old="$NET_BACKUP_DIR/99-github520-dns-${IFACE}.network"
+        if ! cp -a -- "$file" "$old"; then
+            die "Failed to back up the existing $file."
+        fi
+    fi
+
+    NETWORKD_FILE=$file
+    NETWORKD_OLD=$old
+
+    log "Writing systemd-networkd DNS-only configuration: $file"
+    {
+        printf '[Match]\n'
+        printf 'Name=%s\n\n' "$IFACE"
+        printf '[Network]\n'
+        for d in "${DNS_SERVERS[@]}"; do
+            printf 'DNS=%s\n' "$d"
+        done
+        printf '\n[DHCP]\n'
+        printf 'UseDNS=no\n'
+    } > "$file"
+
+    chmod 644 "$file"
+
+    if command -v networkctl >/dev/null 2>&1; then
+        if ! networkctl reload; then
+            restore_networkd_file "$file" "$old"
+            die "networkctl reload failed; the previous configuration was restored."
+        fi
+        if ! networkctl reconfigure "$IFACE"; then
+            restore_networkd_file "$file" "$old"
+            die "networkctl reconfigure failed; the previous configuration was restored."
+        fi
+    else
+        if ! systemctl reload systemd-networkd; then
+            restore_networkd_file "$file" "$old"
+            die "Failed to reload systemd-networkd; the previous configuration was restored."
+        fi
+    fi
+
+    NET_BACKEND_DESC="systemd-networkd DNS-only ($file)"
+}
+
 apply_ifupdown() {
     local src=$BACKEND_FILE
     local base="$TMP_DIR/interfaces.base"
@@ -1182,6 +1646,9 @@ apply_ifupdown() {
     if ! cp -a -- "$src" "$old"; then
         die "Failed to back up $src."
     fi
+
+    IFUPDOWN_SRC=$src
+    IFUPDOWN_OLD=$old
 
     netmask=$(prefix_to_netmask "$STATIC_PREFIX")
     dns_space=$(join_dns_space)
@@ -1247,6 +1714,91 @@ apply_ifupdown() {
     NET_BACKEND_DESC="ifupdown ($src)"
 }
 
+apply_ifupdown_dns() {
+    local src=$BACKEND_FILE
+    local new="$TMP_DIR/interfaces-dns.new"
+    local old="$NET_BACKUP_DIR/$(basename -- "$src")"
+    local dns_space=""
+
+    if [ -z "$src" ] || [ ! -f "$src" ]; then
+        die "The ifupdown configuration file was not found."
+    fi
+
+    if ! cp -a -- "$src" "$old"; then
+        die "Failed to back up $src."
+    fi
+
+    IFUPDOWN_SRC=$src
+    IFUPDOWN_OLD=$old
+    dns_space=$(join_dns_space)
+
+    log "Updating DNS in the ifupdown stanza for $IFACE in $src"
+    if ! awk -v iface="$IFACE" -v dnsline="    dns-nameservers $dns_space" '
+        function insert_dns() {
+            if (in_block && !done) {
+                print dnsline
+                done = 1
+            }
+        }
+        $1 == "iface" && $2 == iface {
+            insert_dns()
+            in_block = 1
+            found = 1
+            print
+            next
+        }
+        in_block {
+            if ($0 ~ /^[[:space:]]*dns-nameservers[[:space:]]/) {
+                if (!done) {
+                    print dnsline
+                    done = 1
+                }
+                next
+            }
+            if ($0 ~ /^[[:space:]]*$/ ||
+                $0 ~ /^[[:space:]]*(iface|auto|allow-|source|mapping)/) {
+                insert_dns()
+                in_block = 0
+                print
+                next
+            }
+        }
+        { print }
+        END {
+            if (in_block) {
+                insert_dns()
+            }
+            if (!found) {
+                exit 1
+            }
+        }
+    ' "$src" > "$new"; then
+        die "Could not find the ifupdown stanza for $IFACE; no changes were made."
+    fi
+
+    if ! cat -- "$new" > "$src"; then
+        cp -a -- "$old" "$src" 2>/dev/null || true
+        die "Failed to write $src."
+    fi
+
+    if command -v ifquery >/dev/null 2>&1; then
+        if ! ifquery "$IFACE" >/dev/null 2>&1; then
+            cp -a -- "$old" "$src" 2>/dev/null || true
+            die "ifquery rejected the new configuration; the previous file was restored."
+        fi
+    fi
+
+    log "Restarting interface $IFACE through ifupdown..."
+    ifdown "$IFACE" >/dev/null 2>&1 || true
+    if ! ifup "$IFACE"; then
+        cp -a -- "$old" "$src" 2>/dev/null || true
+        ifup "$IFACE" >/dev/null 2>&1 || true
+        die "ifup failed for $IFACE; the previous configuration was restored."
+    fi
+
+    NET_BACKEND_DESC="ifupdown DNS-only ($src)"
+}
+
 write_resolv_conf() {
     local backup new d
 
@@ -1260,6 +1812,7 @@ write_resolv_conf() {
         warn "Could not back up $RESOLV_FILE."
         backup=""
     fi
+    RESOLV_BACKUP=$backup
 
     new="$TMP_DIR/resolv.new"
     {
@@ -1308,6 +1861,62 @@ apply_dns_settings() {
     write_resolv_conf
 }
 
+restore_ifupdown() {
+    if [ -z "$IFUPDOWN_SRC" ] || [ -z "$IFUPDOWN_OLD" ] || [ ! -f "$IFUPDOWN_OLD" ]; then
+        warn "No saved ifupdown configuration is available for rollback."
+        return 1
+    fi
+
+    log "Restoring $IFUPDOWN_SRC from $IFUPDOWN_OLD..."
+    cp -a -- "$IFUPDOWN_OLD" "$IFUPDOWN_SRC" || return 1
+
+    ifdown "$IFACE" >/dev/null 2>&1 || true
+    ifup "$IFACE" >/dev/null 2>&1 || return 1
+    return 0
+}
+
+rollback_network_config() {
+    local rc=0
+
+    if [ -n "$IFACE" ] && command -v resolvectl >/dev/null 2>&1; then
+        resolvectl revert "$IFACE" >/dev/null 2>&1 || true
+    fi
+
+    case "$BACKEND" in
+        networkmanager)
+            restore_networkmanager || rc=1
+            ;;
+        netplan)
+            if [ -n "$NETPLAN_FILE" ]; then
+                restore_netplan_file "$NETPLAN_FILE" "$NETPLAN_OLD" || rc=1
+            fi
+            ;;
+        networkd)
+            if [ -n "$NETWORKD_FILE" ]; then
+                restore_networkd_file "$NETWORKD_FILE" "$NETWORKD_OLD" || rc=1
+            fi
+            ;;
+        ifupdown)
+            restore_ifupdown || rc=1
+            ;;
+        *)
+            warn "No network backend is available for rollback."
+            rc=1
+            ;;
+    esac
+
+    if [ -n "$RESOLV_BACKUP" ] && [ -f "$RESOLV_BACKUP" ]; then
+        if cat -- "$RESOLV_BACKUP" > "$RESOLV_FILE" 2>/dev/null; then
+            log "Restored $RESOLV_FILE from $RESOLV_BACKUP."
+        else
+            warn "Could not restore $RESOLV_FILE from $RESOLV_BACKUP."
+            rc=1
+        fi
+    fi
+
+    return "$rc"
+}
+
 wait_for_static_ip() {
     local tries=${1:-10} i
     local -a addrs=()
@@ -1326,12 +1935,13 @@ wait_for_static_ip() {
 }
 
 verify_network_config() {
-    local dns_ok=0 d
+    local dns_ok=0
 
     log "Verifying the new network configuration..."
 
     if ! wait_for_static_ip 12; then
-        die "Static address $STATIC_CIDR is not active on $IFACE. Backups: $NET_BACKUP_DIR"
+        warn "Static address $STATIC_CIDR is not active on $IFACE."
+        return 1
     fi
 
     if ! ip -4 route show default 2>/dev/null | grep -Fq "via $GATEWAY"; then
@@ -1351,13 +1961,71 @@ verify_network_config() {
         fi
     fi
 
-    NETWORK_CONFIGURED=1
     ok "Static IPv4 configuration is active on $IFACE."
+    return 0
+}
+
+verify_dns_config() {
+    local first=${DNS_SERVERS[0]:-}
+
+    if [ -z "$first" ]; then
+        warn "No DNS server was configured."
+        return 1
+    fi
+
+    if command -v resolvectl >/dev/null 2>&1 &&
+       resolvectl dns "$IFACE" 2>/dev/null | grep -Fq "$first"; then
+        ok "DNS server $first is active on $IFACE."
+        return 0
+    fi
+
+    if grep -qE "^[[:space:]]*nameserver[[:space:]]+${first}([[:space:]]|$)" "$RESOLV_FILE" 2>/dev/null; then
+        ok "DNS server $first is present in $RESOLV_FILE."
+        return 0
+    fi
+
+    warn "DNS server $first was not confirmed in the active resolver configuration."
+    return 1
+}
+
+collect_dns_servers() {
+    local require_one=${1:-0}
+    local dns1="" dns2="" def1="" def2=""
+    local -a cur_dns=()
+
+    mapfile -t cur_dns < <(current_dns_servers)
+    def1=${cur_dns[0]:-}
+    def2=${cur_dns[1]:-}
+
+    if [ -n "$def1" ]; then
+        printf 'Current DNS servers: %s\n' "${cur_dns[*]}"
+    fi
+
+    read_dns_value dns1 "DNS server 1" "$def1"
+    read_dns_value dns2 "DNS server 2" "$def2"
+
+    if [ -z "$dns1" ] && [ -n "$dns2" ]; then
+        die "DNS server 1 is required when DNS server 2 is provided."
+    fi
+
+    DNS_SERVERS=()
+    if [ -n "$dns1" ]; then
+        DNS_SERVERS+=("$dns1")
+    fi
+    if [ -n "$dns2" ] && [ "$dns2" != "$dns1" ]; then
+        DNS_SERVERS+=("$dns2")
+    fi
+
+    if [ "${#DNS_SERVERS[@]}" -eq 0 ]; then
+        if [ "$require_one" -eq 1 ]; then
+            die "At least one DNS server is required for --dns-only."
+        fi
+        warn "No DNS servers were provided; only the static address will be changed."
+    fi
 }
 
 configure_static_network() {
-    local ip_input dns1 dns2 def1 def2 pfx
-    local -a cur_dns=()
+    local ip_input="" pfx=24
 
     require_tty
     select_network_backend
@@ -1405,35 +2073,17 @@ configure_static_network() {
     STATIC_ADDR=${ip_input%/*}
     STATIC_PREFIX=${ip_input#*/}
 
-    mapfile -t cur_dns < <(current_dns_servers)
-    def1=${cur_dns[0]:-}
-    def2=${cur_dns[1]:-}
+    collect_dns_servers 0
 
-    if [ -n "$def1" ]; then
-        printf 'Current DNS servers: %s\n' "${cur_dns[*]}"
-    fi
-
-    read_dns_value dns1 "DNS server 1" "$def1"
-    read_dns_value dns2 "DNS server 2" "$def2"
-
-    if [ -z "$dns1" ] && [ -n "$dns2" ]; then
-        die "DNS server 1 is required when DNS server 2 is provided."
-    fi
-
-    DNS_SERVERS=()
-    if [ -n "$dns1" ]; then
-        DNS_SERVERS+=("$dns1")
-    fi
-    if [ -n "$dns2" ] && [ "$dns2" != "$dns1" ]; then
-        DNS_SERVERS+=("$dns2")
-    fi
-
-    if [ "${#DNS_SERVERS[@]}" -eq 0 ]; then
-        warn "No DNS servers were provided; only the static address will be changed."
-    fi
-
-    log "Applying static address $STATIC_CIDR on $IFACE via $NET_BACKEND_DESC..."
+    log "Preparing static address $STATIC_CIDR on $IFACE via $NET_BACKEND_DESC..."
     warn "Changing the address may interrupt an active remote session (for example SSH)."
+
+    if ! confirm_action "Apply this static IP configuration now?"; then
+        log "Static IP configuration cancelled by the user."
+        return 0
+    fi
+
+    NETWORK_ROLLBACK_PENDING=1
 
     case "$BACKEND" in
         networkmanager) apply_networkmanager "$BACKEND_ID" ;;
@@ -1444,29 +2094,78 @@ configure_static_network() {
     esac
 
     apply_dns_settings
-    verify_network_config
 
+    if ! verify_network_config; then
+        rollback_network_config || warn "Network rollback was incomplete."
+        NETWORK_ROLLBACK_PENDING=0
+        die "Static network verification failed; the previous configuration was rolled back. Backups: $NET_BACKUP_DIR"
+    fi
+
+    NETWORK_ROLLBACK_PENDING=0
+    NETWORK_CONFIGURED=1
     ok "Network configuration completed via $NET_BACKEND_DESC."
 }
 
-maybe_configure_static_network() {
-    local answer
+configure_dns_only() {
+    require_tty
+    select_network_backend
+    create_network_backup_dir
+    collect_dns_servers 1
 
-    printf '\n'
-    printf '%sGitHub520 hosts entries are deployed.%s\n' "$C_OK" "$C_RESET"
+    log "Preparing DNS-only change on $IFACE via $NET_BACKEND_DESC..."
+    warn "Applying DNS changes may briefly interrupt network connectivity."
 
-    if [ ! -t 0 ]; then
-        warn "No interactive terminal is available; skipping the optional static IP/DNS step."
+    if ! confirm_action "Apply these DNS settings now?"; then
+        log "DNS configuration cancelled by the user."
         return 0
     fi
 
-    prompt_read answer "Change this machine's static IPv4 address and DNS servers now? [y/N]: "
-    case "$answer" in
-        y|Y|yes|YES|Yes)
+    NETWORK_ROLLBACK_PENDING=1
+
+    case "$BACKEND" in
+        networkmanager) apply_networkmanager_dns "$BACKEND_ID" ;;
+        netplan) apply_netplan_dns ;;
+        networkd) apply_networkd_dns ;;
+        ifupdown) apply_ifupdown_dns ;;
+        *) die "Internal error: unknown network backend '$BACKEND'." ;;
+    esac
+
+    apply_dns_settings
+
+    if ! verify_dns_config; then
+        rollback_network_config || warn "Network rollback was incomplete."
+        NETWORK_ROLLBACK_PENDING=0
+        die "DNS verification failed; the previous configuration was rolled back. Backups: $NET_BACKUP_DIR"
+    fi
+
+    NETWORK_ROLLBACK_PENDING=0
+    NETWORK_CONFIGURED=1
+    ok "DNS configuration completed via $NET_BACKEND_DESC."
+}
+
+maybe_configure_network() {
+    case "$NETWORK_MODE" in
+        hosts)
+            log "Network changes disabled (hosts-only mode)."
+            ;;
+        static)
+            if [ "$DRY_RUN" -eq 1 ]; then
+                select_network_backend
+                log "Dry run: would configure a static IPv4 address and DNS servers via $NET_BACKEND_DESC."
+                return 0
+            fi
             configure_static_network
             ;;
+        dns)
+            if [ "$DRY_RUN" -eq 1 ]; then
+                select_network_backend
+                log "Dry run: would configure DNS servers only via $NET_BACKEND_DESC."
+                return 0
+            fi
+            configure_dns_only
+            ;;
         *)
-            log "No network configuration changes requested."
+            die "Internal error: unknown network mode '$NETWORK_MODE'."
             ;;
     esac
 }
@@ -1476,18 +2175,25 @@ maybe_configure_static_network() {
 # -----------------------------------------------------------------------------
 print_final_summary() {
     printf '\n%s========================================================%s\n' "$C_OK" "$C_RESET"
-    printf '%s GitHub520 deployment completed successfully%s\n' "$C_OK" "$C_RESET"
+    if [ "$DRY_RUN" -eq 1 ]; then
+        printf '%s GitHub520 dry run completed - no changes were made%s\n' "$C_OK" "$C_RESET"
+    else
+        printf '%s GitHub520 deployment completed successfully%s\n' "$C_OK" "$C_RESET"
+    fi
     printf '%s========================================================%s\n' "$C_OK" "$C_RESET"
     printf '  hosts file        : %s\n' "$HOSTS_FILE"
     printf '  hosts source      : %s\n' "$SELECTED_HOSTS_URL"
     printf '  hosts backup      : %s\n' "$HOSTS_BACKUP"
     printf '  GitHub520 entries : %s\n' "$HOSTS_ENTRY_COUNT"
     printf '  snapshot          : %s\n' "$SNAPSHOT_DONE"
+    printf '  network mode      : %s\n' "$NETWORK_MODE"
 
     if [ "$NETWORK_CONFIGURED" -eq 1 ]; then
         printf '  network backend   : %s\n' "$NET_BACKEND_DESC"
-        printf '  static address    : %s\n' "$STATIC_CIDR"
-        printf '  gateway           : %s\n' "$GATEWAY"
+        if [ "$NETWORK_MODE" = "static" ]; then
+            printf '  static address    : %s\n' "$STATIC_CIDR"
+            printf '  gateway           : %s\n' "$GATEWAY"
+        fi
         if [ "${#DNS_SERVERS[@]}" -gt 0 ]; then
             printf '  DNS servers       : %s\n' "${DNS_SERVERS[*]}"
         fi
@@ -1503,7 +2209,14 @@ print_final_summary() {
 # Main
 # -----------------------------------------------------------------------------
 main() {
-    require_root "$@"
+    parse_args "$@"
+
+    if [ "$DRY_RUN" -eq 1 ]; then
+        log "Dry run enabled: no persistent changes will be made."
+    else
+        require_root "$@"
+    fi
+
     detect_os
 
     TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/github520-deploy.XXXXXX")
@@ -1521,10 +2234,17 @@ main() {
     backup_hosts_file
     build_new_hosts
     install_new_hosts
-    flush_dns_caches
 
-    maybe_configure_static_network
+    if [ "$DRY_RUN" -eq 0 ]; then
+        flush_dns_caches
+    fi
+
+    maybe_configure_network
     print_final_summary
+
+    if [ "$DRY_RUN" -eq 1 ]; then
+        log "Dry run finished; nothing was changed."
+    fi
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
