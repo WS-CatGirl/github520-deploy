@@ -1,10 +1,15 @@
-# GitHub520 Deploy for Linux
+# GitHub520-Arch
 
-一个用于在原生 Linux 上部署 [GitHub520](https://github.com/521xueweihan/GitHub520) hosts 规则的交互式脚本。它会自动选择可用的 GitHub520 源、备份并更新 `/etc/hosts`，并可选地配置静态 IPv4 和 DNS。
+面向 **Arch Linux** 的 GitHub520 hosts 安装器（Beta）。
 
-> 本项目不是 GitHub520 官方项目。hosts 内容来自 GitHub520 及其镜像源，脚本只负责下载、校验和写入。
+- 当前版本：**v0.1 (beta)**
+- 作者：**白丝小猫娘 (WS-CatGirl)**
+- 新脚本：[Github520-Arch.sh](Github520-Arch.sh)
+- 旧版通用脚本：[github520-deploy.sh](github520-deploy.sh)（仍然保留，本 README 主要介绍 Arch 版）
+
+> 本项目不是 GitHub520 官方项目。hosts 内容来自 GitHub520 及其镜像源。
 >
-> 当前默认行为是 **只更新 `/etc/hosts`**，不会自动修改网络配置。静态 IP 和 DNS 修改必须显式使用 `--static-ip` 或 `--dns-only`。
+> Beta 版本可能调整行为，重要机器请先做快照或手动备份。
 
 ---
 
@@ -13,14 +18,13 @@
 - [功能特性](#功能特性)
 - [系统要求](#系统要求)
 - [快速开始](#快速开始)
-- [默认行为](#默认行为)
 - [命令行参数](#命令行参数)
-- [使用示例](#使用示例)
-- [执行流程](#执行流程)
+- [安装流程](#安装流程)
 - [Btrfs 与 snapper 快照](#btrfs-与-snapper-快照)
-- [静态 IP 与 DNS 模式](#静态-ip-与-dns-模式)
-- [回滚与备份](#回滚与备份)
-- [GitHub520 源与回退](#github520-源与回退)
+- [网络检测与静态 IP/DNS](#网络检测与静态-ipdns)
+- [systemd timer 与 service](#systemd-timer-与-service)
+- [日志与备份](#日志与备份)
+- [更新、卸载与还原](#更新卸载与还原)
 - [安全说明](#安全说明)
 - [常见问题 Q&A](#常见问题-qa)
 - [English](#english)
@@ -29,35 +33,34 @@
 
 ## 功能特性
 
-- 仅支持 Linux；拒绝 Windows、macOS、WSL、Docker/Podman/LXC 等容器环境。
-- 检测到 KVM/QEMU/VMware/Hyper-V/Xen 等虚拟机时先警告，交互确认后继续；可用 `--allow-vm` 或 `--yes` 跳过询问。
+- 猫娘风格欢迎界面，当前版本 **v0.1 beta**。
+- 仅支持 **Arch Linux**（`/etc/os-release` 中 `ID=arch`）；Manjaro、EndeavourOS 等 Arch 衍生版会被拒绝。
 - 自动处理 root/sudo：
   - root 直接运行；
-  - 普通用户有可用 sudo 时自动提权；
-  - 没有 sudo 或认证失败时给出明确提示并退出。
-- Btrfs + snapper 环境下支持创建快照，带 30 秒倒计时菜单；可用 `--no-snapshot` 跳过。
-- 内置多个 GitHub520 源，单个源请求失败、HTTP 非 200、内容为空或格式无效时自动切换到下一个源。
-- 写入 `/etc/hosts` 前自动备份；写入失败或校验失败时自动恢复。
-- 可选静态 IPv4、网关和 DNS 配置，支持 NetworkManager、netplan、systemd-networkd、ifupdown。
-- 网络修改会进行结果验证，验证失败时尝试自动回滚，并保留备份。
-- 支持 `--dry-run` 预览，不写 hosts、不建快照、不改网络、不刷 DNS 缓存。
-- 所有终端输出均为英文，便于在无法显示中文的 TTY 中使用。
+  - 普通用户有 sudo 时自动提权；
+  - 没有 sudo 或认证失败会给出访问拒绝提示。
+- Btrfs + snapper 环境支持创建快照，30 秒倒计时菜单。
+- 优先检测 **NetworkManager**，同时识别 systemd-networkd、ifupdown、dhcpcd、ConnMan、iwd、netctl。
+- 内置多个 GitHub520 源，单个源失败会自动切换。
+- 写入 `/etc/hosts` 前备份；写入失败或校验失败自动恢复。
+- 可选配置静态 IPv4、网关和 DNS；支持 NetworkManager、systemd-networkd、ifupdown。
+- 安装 systemd service + timer，**每小时自动更新 hosts**。
+- 自动更新成功或失败都会写入 `/var/log/github520/update.log`。
+- 运行提示以英文为主，欢迎和结尾使用双语猫娘风格；避免在 TTY 中出现大段中文乱码。
 
 ## 系统要求
 
-- Linux（原生环境；WSL/容器会被拒绝）
-- bash 4 或更新版本
-- 常用命令：
-  - `curl`
-  - `ip`（iproute2）
-  - `findmnt`（util-linux，通常已安装）
-  - `awk`、`sed`、`grep`、`mktemp` 等 coreutils/findutils 工具
+- **Arch Linux**（仅 `ID=arch`）
+- systemd（用于安装 timer/service）
+- bash 4+
+- `curl`
+- `ip`（iproute2）
+- `findmnt`、`awk`、`sed`、`grep`、`mktemp`、`install` 等 coreutils/util-linux 工具
 - 可选：
   - Btrfs 根文件系统 + `snapper` + `btrfs-progs`
-  - NetworkManager、netplan、systemd-networkd 或 ifupdown 之一
-  - `systemd-resolved`、`resolvconf` 或 `nscd`/`dnsmasq`（用于 DNS 生效和缓存刷新）
-
-脚本会使用 `#!/usr/bin/env bash`，请不要用 `sh` 执行。即使使用 `sh github520-deploy.sh` 启动，脚本也会自动转用 bash；但系统必须已安装 bash 4+。
+  - NetworkManager（推荐）
+  - systemd-networkd 或 ifupdown（备用静态配置后端）
+  - systemd-resolved / resolvconf / nscd / dnsmasq（DNS 生效和缓存刷新）
 
 ## 快速开始
 
@@ -65,383 +68,463 @@
 git clone https://github.com/WS-CatGirl/github520-deploy.git
 cd github520-deploy
 
-chmod +x github520-deploy.sh
-sudo ./github520-deploy.sh
+chmod +x Github520-Arch.sh
+sudo ./Github520-Arch.sh
 ```
 
-普通用户也可以直接执行，脚本会请求 sudo：
+也可以普通用户直接运行，脚本会请求 sudo：
 
 ```bash
-./github520-deploy.sh
+./Github520-Arch.sh
 ```
 
-查看帮助：
+查看帮助或版本：
 
 ```bash
-./github520-deploy.sh --help
+./Github520-Arch.sh --help
+./Github520-Arch.sh --version
 ```
-
-只预览，不做任何修改（不需要 root）：
-
-```bash
-./github520-deploy.sh --dry-run
-```
-
-## 默认行为
-
-不带任何参数时，脚本只做以下事情：
-
-1. 检查权限、系统和网络；
-2. 在 Btrfs + snapper 环境询问是否创建快照；
-3. 检测并下载 GitHub520 hosts；
-4. 备份 `/etc/hosts`；
-5. 删除旧的 GitHub520 块并写入新块；
-6. 刷新 DNS 缓存；
-7. 输出摘要。
-
-**不会询问或修改静态 IP / DNS。** 要修改网络，必须显式使用：
-
-- `--static-ip`：修改静态 IPv4、网关和可选 DNS；
-- `--dns-only`：只修改 DNS，保留当前 IP 和网关。
 
 ## 命令行参数
 
 | 参数 | 说明 |
 |---|---|
 | `-h`, `--help` | 显示帮助并退出，不需要 root。 |
-| `-y`, `--yes` | 自动确认虚拟机警告和网络修改确认；不会自动填写 IP/DNS，也不会自动选择快照菜单。 |
-| `--dry-run` | 预览模式：下载和校验源，但不写 hosts、不建快照、不改网络、不刷 DNS。不需要 root。 |
-| `--no-snapshot` | 跳过 Btrfs/snapper 快照步骤。 |
-| `--hosts-only` | 只更新 hosts，等同于默认行为。 |
-| `--dns-only` | 更新 hosts 后只修改 DNS，保留当前 IP 和网关。 |
-| `--static-ip` | 更新 hosts 后配置静态 IPv4、网关和可选 DNS。 |
-| `--source <url>` | 使用指定的 GitHub520 源，可重复。指定后替代内置源列表。 |
-| `--allow-vm` | 检测到虚拟机时直接继续，不再询问。Docker/WSL/容器仍然拒绝。 |
-| `--` | 选项结束标记。 |
+| `-V`, `--version` | 显示版本并退出。 |
+| `--update` | systemd timer 使用的内部模式：非交互更新 hosts，写入日志后退出。普通用户不需要手动使用。 |
 
-`--hosts-only`、`--dns-only`、`--static-ip` 三者互斥，同时使用会报错。
+正常安装不建议使用 `--update`；它会跳过欢迎、快照、网络配置和 timer 安装。
 
-### 参数组合建议
+## 安装流程
 
-| 场景 | 命令 |
-|---|---|
-| 只更新 hosts（默认） | `sudo ./github520-deploy.sh` |
-| 跳过快照，自动确认虚拟机 | `sudo ./github520-deploy.sh --no-snapshot --yes` |
-| 只改 DNS | `sudo ./github520-deploy.sh --dns-only` |
-| 改静态 IP | `sudo ./github520-deploy.sh --static-ip` |
-| 预览静态 IP 流程 | `./github520-deploy.sh --dry-run --static-ip` |
-| 指定源 | `sudo ./github520-deploy.sh --source https://raw.hellogithub.com/hosts` |
-
-## 使用示例
-
-### 1. 普通部署
-
-```bash
-sudo ./github520-deploy.sh
+```text
+欢迎 / Welcome
+  ↓
+权限检查（root / sudo）
+  ↓
+Arch Linux 检查
+  ↓
+Btrfs + snapper 可选快照
+  ↓
+网络后端检测（NetworkManager 优先）
+  ↓
+GitHub520 源检测
+  ↓
+备份并更新 /etc/hosts
+  ↓
+询问是否配置静态 IPv4 / DNS
+  ↓
+安装并启用 hourly timer
+  ↓
+清理临时文件，输出总结
 ```
 
-脚本会在需要时请求 sudo 密码，然后按上述默认流程更新 hosts。
+### 1. 欢迎
 
-### 2. 非交互式更新 hosts
+显示猫娘风格欢迎语、`Ciallo～(∠・ω< )⌒★` 和版本 `v0.1 beta`。
 
-```bash
-sudo ./github520-deploy.sh --hosts-only --no-snapshot --yes
-```
+### 2. 权限
 
-适用于 cron、配置管理或自动化脚本。`--yes` 只确认警告和确认框；如果系统是 Btrfs + snapper 且没有 `--no-snapshot`，仍然会出现快照菜单。
+- root：直接继续。
+- 普通用户：
+  - 有可用 sudo：自动重新执行；
+  - 需要密码：调用 `sudo -v` 请求验证；
+  - 无 sudo 或验证失败：输出 `ACCESS DENIED` 并退出。
 
-### 3. 只改 DNS
+### 3. Arch 检查
 
-```bash
-sudo ./github520-deploy.sh --dns-only
-```
-
-脚本会提示 DNS1、DNS2，然后根据当前网络后端修改 DNS，保留 IP 地址和网关。
-
-### 4. 配置静态 IPv4
+读取 `/etc/os-release`：
 
 ```bash
-sudo ./github520-deploy.sh --static-ip
+ID=arch
 ```
 
-脚本会显示当前接口、地址和网关，并提示输入：
+不是 Arch Linux 会立即退出，不会修改任何文件。
+
+### 4. 快照
+
+仅当根文件系统是 Btrfs 且 snapper 有配置时询问。详见下文。
+
+### 5. 网络检测
+
+先检测 NetworkManager，再检测 systemd-networkd、ifupdown、dhcpcd、ConnMan、iwd、netctl，并读取默认路由、接口、网关和当前 IP。
+
+### 6. GitHub520 更新
+
+- 逐个探测内置源；
+- 下载并校验 `# GitHub520 Host Start/End`、条目数量；
+- 失败自动切换下一个源；
+- 全部失败则退出，不修改 hosts。
+
+### 7. 写入 hosts
+
+- 备份到 `/var/backups/github520/hosts.<时间>.<pid>`；
+- 删除旧 GitHub520 块；
+- 去除末尾多余空行，追加新块；
+- 写入 `/etc/hosts` 并验证；
+- 失败时自动恢复备份；
+- 刷新 DNS 缓存。
+
+### 8. 静态 IP/DNS（可选）
+
+询问：
+
+```text
+Change the local static IPv4 address / DNS now? [y/N]:
+```
+
+选 `y` 后会显示当前接口、地址、网关，并询问：
 
 - 静态 IPv4（CIDR，例如 `192.168.1.50/24`）
 - DNS1
 - DNS2（可留空）
 
-修改前会再次确认。修改后会检查地址是否生效，失败时尝试回滚。
+然后再次确认并应用。具体后端见下文。
 
-### 5. Dry run
+### 9. timer/service
 
-```bash
-./github520-deploy.sh --dry-run --static-ip
-```
+安装并启用：
 
-会执行系统/网络/源检测，并显示计划修改的 hosts diff，但不会进行任何持久化修改。由于没有输入实际 IP/DNS，dry-run 不会真正执行网络配置。
+- `/etc/systemd/system/github520-update.service`
+- `/etc/systemd/system/github520-update.timer`
 
-### 6. 使用自定义源
+### 10. 收尾
 
-```bash
-sudo ./github520-deploy.sh --source https://raw.hellogithub.com/hosts
-```
-
-也可以重复指定多个源：
-
-```bash
-sudo ./github520-deploy.sh \
-  --source https://raw.hellogithub.com/hosts \
-  --source https://fastly.jsdelivr.net/gh/521xueweihan/GitHub520@main/hosts
-```
-
-指定 `--source` 后，内置源列表会被替换，不再自动使用其他内置镜像。
-
-## 执行流程
-
-1. **参数解析**：先处理 `--help`，因此非 root 也可以查看帮助。
-2. **权限检查**：根据是否 root、是否可用 sudo 决定直接运行或重新提权。
-3. **系统检查**：
-   - 拒绝非 Linux、WSL、容器；
-   - 检测虚拟机并警告，交互确认或使用 `--allow-vm` / `--yes`；
-   - 读取 `/etc/os-release` 显示发行版。
-4. **文件系统检查**：
-   - 非 Btrfs 跳过；
-   - Btrfs 且 snapper 有配置时，列出 snapper 配置和 Btrfs 子卷；
-   - 30 秒倒计时选择快照范围；超时、错误或选择“不创建”都会中止。
-5. **网络与源检测**：
-   - 探测 NetworkManager、ifupdown、netplan、systemd-networkd 等；
-   - 读取默认路由、接口、网关和当前 IPv4；
-   - 逐个探测 GitHub520 源。
-6. **下载与校验**：
-   - 逐源下载；
-   - 校验 HTTP 200、非空、`# GitHub520 Host Start/End` 唯一、至少 5 条 IP/域名映射；
-   - 全部失败则在修改 hosts 前退出。
-7. **更新 hosts**：
-   - 备份 `/etc/hosts`；
-   - 用 awk 删除旧 GitHub520 块；
-   - 追加新块并验证；
-   - 写入失败或验证失败时用备份恢复；
-   - 刷新 DNS 缓存。
-8. **可选网络配置**：
-   - 默认跳过；
-   - `--static-ip` 或 `--dns-only` 时选择后端、收集参数、确认、应用、验证；
-   - 验证失败时回滚。
-9. **输出摘要**：hosts 源、条目数、快照、网络模式、备份位置。
+清理临时目录，输出仓库地址、作者、timer 和日志命令，并附猫娘风格结束语。
 
 ## Btrfs 与 snapper 快照
 
-当根文件系统是 Btrfs，且安装了 snapper 并存在配置时，脚本会：
+当根文件系统是 Btrfs，且 `snapper` 已安装并有配置时：
 
 1. 执行 `snapper list-configs`；
 2. 执行 `btrfs subvolume list /`；
 3. 显示前 20 个子卷；
-4. 提供三个选择：
+4. 提供 30 秒倒计时菜单：
 
 ```text
-1) Snapshot all snapper configs (all subvolumes)
+1) Snapshot all snapper configs
 2) Snapshot only the @ subvolume (root config)
 3) Do not snapshot (abort deployment)
 ```
 
-- 30 秒内没有有效选择会超时退出；
-- 选择 3 会按设计中止部署；
-- 任一 snapper 命令失败会退出；
-- 使用 `--no-snapshot` 可完全跳过该步骤。
+规则：
 
-注意：`--yes` **不会**自动替你选择快照范围。自动化场景请显式加 `--no-snapshot`，或保留交互终端。
+- 30 秒内没有有效选择：超时退出；
+- 出现任何 snapper/btrfs 错误：退出；
+- 选择 3：按设计中止部署；
+- 非 Btrfs、未安装 snapper 或没有 snapper 配置：自动跳过；
+- 快照创建发生在写 hosts 和改网络之前。
 
-## 静态 IP 与 DNS 模式
+## 网络检测与静态 IP/DNS
 
-### 后端选择顺序
+### 检测顺序
 
-脚本按以下顺序选择：
+1. **NetworkManager（优先）**
+2. systemd-networkd
+3. ifupdown
+4. dhcpcd / ConnMan / iwd / netctl（只检测，静态配置不直接使用）
 
-1. NetworkManager（`nmcli` 且服务处于 active）
-2. netplan（存在 `/etc/netplan/*.yaml`）
-3. systemd-networkd（服务 active）
-4. ifupdown（`/etc/network/interfaces` 或 `interfaces.d` 中含目标接口）
+静态配置后端选择：
 
-如果检测到多个后端，会优先使用排在前面的。若目标接口没有对应的活动连接，可能回退到其他后端；修改前建议先确认当前实际由谁管理网络。
+- NetworkManager：有 active 连接时使用 `nmcli`；
+- systemd-networkd：服务 active 时写 `/etc/systemd/network/99-github520-<iface>.network`；
+- ifupdown：`/etc/network/interfaces` 或 `interfaces.d` 中含目标接口时改写 stanza；
+- 都不支持：报错退出。
 
-### `--static-ip`
+### NetworkManager
 
-- 使用当前默认路由的接口和网关；
-- 输入 IPv4 CIDR；
-- DNS1、DNS2 可沿用当前值；
-- 修改前会二次确认；
-- 修改后会验证新地址是否出现在接口上；
-- 验证失败会调用回滚，并保留 `/var/backups/github520-*` 备份。
+```bash
+nmcli connection modify <uuid> \
+  ipv4.method manual \
+  ipv4.addresses 192.168.1.50/24 \
+  ipv4.gateway 192.168.1.1 \
+  ipv4.dns 1.1.1.1,8.8.8.8 \
+  ipv4.ignore-auto-dns yes
+nmcli connection up <uuid>
+```
 
-### `--dns-only`
+修改前会保存旧字段，验证失败时尝试恢复。
 
-- 保留当前 IP 和网关；
-- 只修改 DNS；
-- NetworkManager：设置 `ipv4.dns` 并重新激活连接；
-- netplan：写入只包含 `nameservers` 的 90 优先级文件；
-- systemd-networkd：写入只包含 `DNS=` 和 `[DHCP] UseDNS=no` 的文件；
-- ifupdown：只替换目标 stanza 中的 `dns-nameservers`，保留其他选项；
-- 修改后验证 DNS 是否出现在 `resolvectl` 或 `/etc/resolv.conf` 中。
+### systemd-networkd
 
-### 远程连接风险
+写入 99 优先级的 `.network` 文件，包含：
 
-修改静态 IP 或重启网络接口可能中断 SSH。脚本会警告并二次确认，但无法保证远程会话不中断。建议：
+```ini
+[Match]
+Name=eth0
 
-- 在本地控制台或带外管理（IPMI、云控制台）下操作；
-- 先确认新 IP、网关、子网和 DNS 正确；
-- 保留当前会话，直到验证新地址可访问；
-- 如果失联，使用云控制台恢复，或从 `/var/backups/github520-*` 还原配置。
+[Network]
+DHCP=no
+Address=192.168.1.50/24
+Gateway=192.168.1.1
+DNS=1.1.1.1
+```
 
-## 回滚与备份
+然后执行 `networkctl reload` 和 `networkctl reconfigure <iface>`。
+
+### ifupdown
+
+重写目标接口的 stanza。注意：**这可能丢失 MTU、bridge、bond、VLAN、pre-up 等额外选项**。复杂网络环境建议手动修改，或在快照中操作。
+
+### DNS
+
+按顺序尝试：
+
+1. systemd-resolved：`resolvectl dns <iface> ...`；
+2. `resolvconf`；
+3. 直接写 `/etc/resolv.conf`（如果是符号链接则拒绝覆盖）。
+
+修改静态 IP 或重启网络接口可能中断 SSH，请优先使用本地控制台或云控制台。
+
+## systemd timer 与 service
+
+安装后会复制脚本到：
+
+```text
+/usr/local/bin/github520-arch.sh
+```
+
+> 注意大小写：仓库文件是 `Github520-Arch.sh`，安装后的固定路径是小写 `github520-arch.sh`。
+
+Service：
+
+```text
+/etc/systemd/system/github520-update.service
+```
+
+核心配置：
+
+```ini
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/github520-arch.sh --update
+```
+
+Timer：
+
+```text
+/etc/systemd/system/github520-update.timer
+```
+
+核心配置：
+
+```ini
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=1h
+AccuracySec=1min
+RandomizedDelaySec=30s
+Persistent=true
+Unit=github520-update.service
+```
+
+行为：
+
+- 安装完成后立即更新一次 hosts；
+- 开机 5 分钟后第一次 timer 运行；
+- 之后每小时运行一次；
+- 每次运行调用 `--update`，非交互更新 hosts；
+- 更新成功或失败写入日志；
+- 更新模式不会创建快照、不会修改网络、不会重新安装 timer。
+
+常用命令：
+
+```bash
+systemctl status github520-update.timer
+systemctl list-timers github520-update.timer
+systemctl start github520-update.service
+journalctl -u github520-update.service
+tail -f /var/log/github520/update.log
+```
+
+手动执行一次更新：
+
+```bash
+sudo /usr/local/bin/github520-arch.sh --update
+```
+
+## 日志与备份
+
+### 更新日志
+
+```text
+/var/log/github520/update.log
+```
+
+每次运行会写入：
+
+- 开始时间；
+- 使用的源；
+- 下载/校验结果；
+- hosts 是否变化；
+- 成功或失败；
+- 失败原因。
+
+日志超过 1 MiB 时会轮转为 `update.log.1`。
 
 ### hosts 备份
 
-每次写入前创建：
-
 ```text
-/etc/hosts.github520-backup.<YYYYmmdd-HHMMSS>.<pid>
+/var/backups/github520/hosts.<YYYYmmdd-HHMMSS>.<pid>
 ```
 
-写入或校验失败时，退出钩子会自动恢复该备份。
+默认保留最近 24 份。只有 hosts 内容发生变化时才创建新备份。
 
 手动恢复：
 
 ```bash
-sudo cp /etc/hosts.github520-backup.20260101-120000.1234 /etc/hosts
+sudo cp /var/backups/github520/hosts.20260101-120000.1234 /etc/hosts
 ```
 
-### 网络配置备份
-
-网络修改前创建：
+### 网络备份
 
 ```text
-/var/backups/github520-<YYYYmmdd-HHMMSS>.<pid>/
+/var/backups/github520/net-<时间>.<pid>/
 ```
 
-其中包含：
+包含 NetworkManager 旧字段、networkd/ifupdown 配置文件、resolv.conf 备份（如果直接修改过）。
 
-- NetworkManager 连接的旧字段快照；
-- 被覆盖的 netplan 文件；
-- 被覆盖的 systemd-networkd 文件；
-- 被覆盖的 ifupdown 文件；
-- `/etc/resolv.conf` 备份（如果脚本直接修改过它）。
+### 临时文件
 
-网络验证失败、收到 INT/TERM/HUP 或应用过程中出错时，脚本会尝试自动回滚。若自动回滚不完整，请根据备份目录手动恢复，然后重启对应网络服务。
+安装/更新使用的 `mktemp` 目录会在退出时自动删除。
 
-### 注意
+## 更新、卸载与还原
 
-自动回滚无法覆盖断电、内核崩溃、强制 kill -9 或网络服务自身异常等情况。重要机器请先做快照或手动备份。
+### 更新脚本
 
-## GitHub520 源与回退
+如果修改了仓库中的 `Github520-Arch.sh`，重新运行安装器即可覆盖 `/usr/local/bin/github520-arch.sh` 并重启 timer：
 
-内置源：
+```bash
+sudo ./Github520-Arch.sh
+```
 
-1. `https://raw.hellogithub.com/hosts`（官方）
-2. `https://fastly.jsdelivr.net/gh/521xueweihan/GitHub520@main/hosts`
-3. `https://gcore.jsdelivr.net/gh/521xueweihan/GitHub520@main/hosts`
-4. `https://testingcf.jsdelivr.net/gh/521xueweihan/GitHub520@main/hosts`
-5. `https://quantil.jsdelivr.net/gh/521xueweihan/GitHub520@main/hosts`
-6. `https://cdn.jsdelivr.net/gh/521xueweihan/GitHub520@main/hosts`
-7. `https://raw.githubusercontent.com/521xueweihan/GitHub520/main/hosts`
+### 卸载 timer/service
 
-下载逻辑：
+```bash
+sudo systemctl disable --now github520-update.timer
+sudo rm -f /etc/systemd/system/github520-update.timer
+sudo rm -f /etc/systemd/system/github520-update.service
+sudo systemctl daemon-reload
+sudo rm -f /usr/local/bin/github520-arch.sh
+```
 
-- 每个源最多尝试两次；
-- 请求失败、HTTP 非 200、空文件、格式校验失败都会跳到下一个；
-- 所有源失败时立即退出，不备份、不修改 `/etc/hosts`；
-- `--source` 可替换为自定义源列表。
+### 还原 hosts
+
+```bash
+sudo cp /var/backups/github520/hosts.<时间>.<pid> /etc/hosts
+```
+
+或者只删除 GitHub520 块：
+
+```bash
+sudo sed -i '/# GitHub520 Host Start/,/# GitHub520 Host End/d' /etc/hosts
+```
+
+日志和备份目录可按需删除：
+
+```bash
+sudo rm -rf /var/log/github520 /var/backups/github520
+```
 
 ## 安全说明
 
-- 脚本以 root 权限修改 `/etc/hosts`，并可能修改网络配置。运行前请阅读代码。
-- hosts 内容来自第三方 CDN/镜像。脚本目前校验结构、标记和条目数量，但**没有**对域名做严格白名单校验。若镜像被劫持，可能写入恶意解析记录。对安全要求高的环境，建议只使用官方源，或自行增加域名白名单。
-- 脚本不会安装软件包，不会修改防火墙，不会修改 SSH 配置。
-- `--dry-run` 不会写 hosts 或网络配置，但仍会发起 HTTPS 请求。
-- 脚本不保存任何凭据；sudo 认证由系统 sudo 处理。
+- 脚本以 root 权限修改 `/etc/hosts`，可能修改网络配置并安装 systemd unit。
+- hosts 内容来自 GitHub520 及第三方 CDN/镜像；脚本校验结构和条目数量，但**没有域名白名单**。镜像被劫持时可能写入恶意解析记录。高安全环境请只使用官方源或自行增加白名单。
+- 脚本不会安装软件包，不会修改防火墙或 SSH 配置。
+- timer 以 root 执行本地脚本；请确保 `/usr/local/bin/github520-arch.sh` 权限为 `0755` 且不可被普通用户篡改。
+- Beta 版本请先在测试机或快照中验证。
+- 本项目不是 GitHub520 官方项目。
 
 ## 常见问题 Q&A
 
-### Q1: 提示 “Virtual machine detected”，还能继续吗？
+### Q1: 为什么提示只支持 Arch Linux？
 
-可以。脚本会先警告，然后询问是否继续。选择 `y` 即可。也可以使用：
+脚本会读取 `/etc/os-release` 的 `ID`，只有 `ID=arch` 才继续。Manjaro、EndeavourOS、Garuda 等 Arch 衍生版目前也会被拒绝。
 
-```bash
-sudo ./github520-deploy.sh --allow-vm
-# 或
-sudo ./github520-deploy.sh --yes
-```
+### Q2: 在 Arch WSL 或容器里能运行吗？
 
-Docker、Podman、LXC、WSL 等容器环境仍然会被直接拒绝，`--allow-vm` 不会绕过。
+理论上 `ID=arch` 会通过，但脚本需要 systemd 且在 `/run/systemd/system` 存在。大多数 WSL/容器默认不满足，会在 systemd 检查处退出。请勿在隔离环境中修改宿主机的网络配置。
 
-### Q2: 为什么 WSL 和 Docker 不能运行？
+### Q3: 没有 sudo 怎么办？
 
-脚本会直接修改宿主机/系统的 `/etc/hosts` 和网络配置，而 WSL/容器中的 `/etc/hosts` 通常是隔离的，修改不会按预期作用到宿主机；网络后端也可能不可用。因此设计上直接拒绝。
+使用 root 登录，或让管理员把账号加入 sudoers。脚本没有 sudo 时会输出访问拒绝并退出。
 
-### Q3: Btrfs 快照菜单超时了怎么办？
+### Q4: 快照菜单超时了？
 
-这是设计行为：30 秒内没有有效选择会中止。重新运行并尽快选择，或使用：
+这是设计行为：30 秒内没有有效选择会中止。重新运行并选择 1 或 2；不需要快照时选择 3 会主动中止安装。
 
-```bash
-sudo ./github520-deploy.sh --no-snapshot
-```
+### Q5: 所有 GitHub520 源都失败？
 
-### Q4: 所有 GitHub520 源都失败怎么办？
+脚本会在写 hosts 前退出，不修改现有配置。请检查：
 
-脚本会在修改 hosts 前退出。请检查：
-
+- 网络和 DNS；
 - 是否能访问 `https://raw.hellogithub.com/hosts`；
-- DNS 是否正常；
-- 是否需要 HTTP(S) 代理；
-- 防火墙/安全组是否拦截 443；
-- 是否在公司网络中被 TLS 拦截。
+- 代理/防火墙/TLS 拦截；
+- 系统时间是否正确。
 
-可以指定一个可用源：
+### Q6: hosts 写入失败或提示 immutable？
 
-```bash
-sudo ./github520-deploy.sh --source https://raw.hellogithub.com/hosts
-```
-
-### Q5: 提示 `/etc/hosts` 不可写或 immutable 怎么办？
-
-检查属性：
+检查：
 
 ```bash
 lsattr /etc/hosts
 ```
 
-如果带有 `i` 属性：
+如果有 `i` 属性：
 
 ```bash
 sudo chattr -i /etc/hosts
 ```
 
-修改完成后再根据需要加回。也请确认文件系统不是只读挂载。
+修改完成后可以按需加回。
 
-### Q6: hosts 已更新，但 GitHub 仍然很慢或图片打不开？
+### Q7: 为什么安装后 /etc/hosts 没变化？
 
-可能原因：
+可能已经是相同内容。脚本会检测 `cmp`，如果 hosts 已是最新，会显示 `Hosts already up to date`，不会重复备份或写入。
 
-- DNS 缓存未刷新：重启网络或执行 `resolvectl flush-caches`；
-- 浏览器/系统使用了 DoH 或代理，绕过 hosts；
-- GitHub520 当前 IP 对您的网络不是最优；
-- 目标域名没有被 hosts 覆盖；
-- 公司网络/防火墙限制。
+### Q8: timer 没有运行？
 
-可用以下命令确认解析：
+检查：
 
 ```bash
-getent hosts github.com
+systemctl status github520-update.timer
+systemctl list-timers github520-update.timer
+systemctl status github520-update.service
+journalctl -u github520-update.service
 ```
 
-### Q7: 静态 IP 修改后 SSH 断开了怎么办？
+常见原因：
 
-脚本会警告并二次确认，但网络修改本身可能导致连接中断。请使用云控制台/本地控制台登录，然后：
+- systemd 不是 PID 1；
+- timer 被手动 disable；
+- 脚本路径 `/usr/local/bin/github520-arch.sh` 被删除；
+- unit 文件被修改但未 `daemon-reload`。
 
-1. 查看 `/var/backups/github520-*`；
-2. 恢复旧配置文件；
-3. 重启 NetworkManager/netplan/systemd-networkd/ifupdown；
-4. 或直接恢复机器快照。
+### Q9: 如何立即测试自动更新？
 
-### Q8: `--dns-only` 后 DNS 没生效？
+```bash
+sudo systemctl start github520-update.service
+tail -n 50 /var/log/github520/update.log
+```
+
+### Q10: 自动更新会改网络吗？
+
+不会。`--update` 只更新 hosts 和刷新 DNS 缓存，不创建快照、不修改静态 IP/DNS，也不会重装 timer。
+
+### Q11: 静态 IP 修改后 SSH 断开了？
+
+脚本会二次确认，但无法保证远程连接不中断。请使用本地/云控制台登录，然后：
+
+1. 查看 `/var/backups/github520/net-*`；
+2. 恢复旧配置；
+3. 重启 NetworkManager、systemd-networkd 或 ifupdown；
+4. 或恢复快照。
+
+### Q12: 为什么优先使用 NetworkManager？
+
+Arch 桌面和很多服务器使用 NetworkManager。脚本会优先检查 `nmcli` 和 active 连接；没有可用 NM 连接时才回退到 systemd-networkd/ifupdown。
+
+### Q13: DNS 修改没生效？
 
 检查：
 
@@ -450,91 +533,74 @@ resolvectl dns
 cat /etc/resolv.conf
 ```
 
-可能的原因：
+可能原因：
 
-- 后端不是 systemd-resolved，而是 dnsmasq/NetworkManager；
-- `/etc/resolv.conf` 是符号链接，脚本拒绝直接覆盖；
-- 另一个网络配置文件的 DNS 优先级更高；
-- DNS 修改后没有重新激活连接。
+- systemd-resolved 未启用；
+- `/etc/resolv.conf` 是符号链接，脚本拒绝覆盖；
+- 其他网络配置优先级更高；
+- 修改后未重新激活连接。
 
-可以查看脚本输出的 `network backend` 和备份目录，确认实际后端。
+### Q14: ifupdown 的 bridge/bond/VLAN 会保留吗？
 
-### Q9: ifupdown 配置很复杂（bridge/bond/VLAN）会怎样？
+`--static-ip` 对应的 ifupdown 逻辑会重写目标 stanza，可能丢失 MTU、bridge、bond、VLAN、pre-up 等选项。复杂网络请手动修改，或先做快照/备份。
 
-`--static-ip` 会重写目标接口的 stanza，可能丢失 MTU、bridge、bond、VLAN、pre-up 等选项。复杂网络环境建议：
-
-- 不要使用 `--static-ip`；
-- 手动修改 `/etc/network/interfaces`；
-- 或先测试 `--dry-run` / 在快照中操作。
-
-`--dns-only` 只替换 `dns-nameservers`，对其他选项更安全。
-
-### Q10: 为什么默认不改网络了？
-
-为了避免脚本在无人值守或远程环境下意外改坏网络。默认只更新 hosts；需要网络修改时显式加 `--static-ip` 或 `--dns-only`。
-
-### Q11: `--yes` 会自动选择快照吗？
-
-不会。`--yes` 只自动确认虚拟机警告和网络修改确认。快照范围涉及数据安全，仍需要交互选择；自动化请用 `--no-snapshot`。
-
-### Q12: `--dry-run` 为什么没有提示输入 IP/DNS？
-
-dry-run 只做检测、下载、校验和差异预览，不执行网络配置，因此不会收集实际 IP/DNS，也不会修改网络。它仍会显示将要使用的网络模式和后端。
-
-### Q13: 如何完全卸载/恢复？
-
-推荐从备份恢复：
+### Q15: 如何卸载？
 
 ```bash
-sudo cp /etc/hosts.github520-backup.<时间>.<pid> /etc/hosts
+sudo systemctl disable --now github520-update.timer
+sudo rm -f /etc/systemd/system/github520-update.timer
+sudo rm -f /etc/systemd/system/github520-update.service
+sudo systemctl daemon-reload
+sudo rm -f /usr/local/bin/github520-arch.sh
 ```
 
-或删除 hosts 中的 GitHub520 块：
+然后用备份还原 `/etc/hosts`。
 
-```bash
-sudo sed -i '/# GitHub520 Host Start/,/# GitHub520 Host End/d' /etc/hosts
-```
+### Q16: 这是正式版吗？
 
-网络配置请根据 `/var/backups/github520-*` 手动恢复。
-
-### Q14: 为什么脚本输出全是英文？
-
-因为很多 TTY/救援环境无法正确显示中文。README 提供中文说明，脚本本身的运行日志保持英文。
+不是。当前是 **v0.1 beta**。欢迎反馈问题，但请勿在未备份的生产环境直接使用。
 
 ---
 
 # English
 
-A bash script that deploys [GitHub520](https://github.com/521xueweihan/GitHub520) hosts entries on native Linux. It selects a working GitHub520 source, backs up and updates `/etc/hosts`, and can optionally configure a static IPv4 address and DNS servers.
+GitHub520 hosts installer for **Arch Linux** (Beta).
 
-> This is not an official GitHub520 project. The hosts content comes from GitHub520 and its mirrors; this script only downloads, validates and writes it.
+- Version: **v0.1 (beta)**
+- Author: **白丝小猫娘 (WS-CatGirl)**
+- New script: [Github520-Arch.sh](Github520-Arch.sh)
+- Legacy generic script: [github520-deploy.sh](github520-deploy.sh)
+
+> This is not an official GitHub520 project. Hosts content comes from GitHub520 and its mirrors.
 >
-> The default action is **hosts-only**. Network changes require `--static-ip` or `--dns-only`.
+> Beta software. Keep backups and test on a non-critical machine first.
 
 ## Features
 
-- Native Linux only. Windows, macOS, WSL, Docker/Podman/LXC and other containers are rejected.
-- Virtual machines (KVM/QEMU/VMware/Hyper-V/Xen, etc.) trigger a warning and confirmation. Use `--allow-vm` or `--yes` to continue without the prompt.
-- Automatic privilege handling:
+- Catgirl-style welcome screen with version **v0.1 beta**.
+- **Arch Linux only** (`ID=arch` in `/etc/os-release`). Manjaro, EndeavourOS and other Arch derivatives are rejected.
+- Root/sudo handling:
   - root runs directly;
   - a normal user with sudo is re-executed through sudo;
-  - missing sudo or failed authentication produces a clear access-denied message.
-- Optional Btrfs/snapper snapshot with a 30-second countdown. Use `--no-snapshot` to skip it.
-- Multiple built-in GitHub520 sources with automatic fallback on request failure, non-200 HTTP status, empty content or invalid format.
-- Backs up `/etc/hosts` before writing and restores it if writing or verification fails.
-- Optional static IPv4, gateway and DNS configuration for NetworkManager, netplan, systemd-networkd and ifupdown.
-- Network changes are verified; failed verification triggers a rollback attempt. Backups are retained.
-- `--dry-run` previews without writing hosts, creating snapshots, changing network settings or flushing DNS.
-- All runtime output is English, suitable for TTYs that cannot display Chinese.
+  - missing sudo or failed authentication produces an access-denied message.
+- Optional Btrfs/snapper snapshot with a 30-second countdown.
+- Detects **NetworkManager first**, then systemd-networkd, ifupdown, dhcpcd, ConnMan, iwd and netctl.
+- Multiple GitHub520 sources with automatic fallback.
+- Backs up `/etc/hosts` before writing and restores it on failure.
+- Optional static IPv4, gateway and DNS configuration.
+- Installs a systemd service + hourly timer for automatic updates.
+- Writes success/failure details to `/var/log/github520/update.log`.
+- Bilingual/catgirl-style welcome and final summary; runtime messages remain readable in a TTY.
 
 ## Requirements
 
-- Linux (native; WSL/containers rejected, VMs require confirmation)
+- Arch Linux (`ID=arch`)
+- systemd
 - bash 4+
-- `curl`, `ip` (iproute2), `findmnt` (util-linux), `awk`, `sed`, `grep`, `mktemp`
+- `curl`, `ip` (iproute2), `findmnt`, `awk`, `sed`, `grep`, `mktemp`, `install`
 - Optional: Btrfs + snapper + btrfs-progs
-- Optional: NetworkManager, netplan, systemd-networkd or ifupdown
-- Optional: systemd-resolved, resolvconf, nscd or dnsmasq for DNS handling/cache flushing
+- Optional: NetworkManager (recommended), systemd-networkd, ifupdown
+- Optional: systemd-resolved, resolvconf, nscd or dnsmasq for DNS handling
 
 ## Quick start
 
@@ -542,216 +608,197 @@ A bash script that deploys [GitHub520](https://github.com/521xueweihan/GitHub520
 git clone https://github.com/WS-CatGirl/github520-deploy.git
 cd github520-deploy
 
-chmod +x github520-deploy.sh
-sudo ./github520-deploy.sh
+chmod +x Github520-Arch.sh
+sudo ./Github520-Arch.sh
 ```
 
-A normal user can also run it directly; the script will request sudo:
+Help and version:
 
 ```bash
-./github520-deploy.sh
+./Github520-Arch.sh --help
+./Github520-Arch.sh --version
 ```
-
-Show help:
-
-```bash
-./github520-deploy.sh --help
-```
-
-Preview without changing anything (no root required):
-
-```bash
-./github520-deploy.sh --dry-run
-```
-
-## Default behavior
-
-With no options, the script:
-
-1. checks privileges, OS and network;
-2. asks about a snapshot on Btrfs + snapper;
-3. detects and downloads GitHub520 hosts;
-4. backs up `/etc/hosts`;
-5. removes the old GitHub520 block and appends the new one;
-6. flushes DNS caches;
-7. prints a summary.
-
-It does **not** ask about or modify static IP/DNS by default. Use:
-
-- `--static-ip` to configure a static IPv4 address, gateway and optional DNS;
-- `--dns-only` to change DNS only, keeping the current IP and gateway.
 
 ## Options
 
 | Option | Description |
 |---|---|
-| `-h`, `--help` | Show help and exit. Does not require root. |
-| `-y`, `--yes` | Auto-confirm the VM warning and network-change confirmation. Does not fill in IP/DNS or choose a snapshot range. |
-| `--dry-run` | Download and validate, but do not create snapshots, write hosts, change network settings or flush DNS. No root required. |
-| `--no-snapshot` | Skip the Btrfs/snapper snapshot step. |
-| `--hosts-only` | Update hosts only. This is the default. |
-| `--dns-only` | Update hosts, then change DNS only. Keep the current IP and gateway. |
-| `--static-ip` | Update hosts, then configure static IPv4, gateway and optional DNS. |
-| `--source <url>` | Use a specific GitHub520 source. May be repeated; replaces the built-in list. |
-| `--allow-vm` | Continue on a detected virtual machine without asking. Docker/WSL/containers are still rejected. |
-| `--` | End of options. |
+| `-h`, `--help` | Show help and exit. No root required. |
+| `-V`, `--version` | Show version and exit. |
+| `--update` | Internal non-interactive mode used by the systemd timer. Updates hosts, writes the log and exits. |
 
-`--hosts-only`, `--dns-only` and `--static-ip` are mutually exclusive.
+## Install flow
 
-## Examples
-
-```bash
-# Default: hosts only
-sudo ./github520-deploy.sh
-
-# Non-interactive hosts update
-sudo ./github520-deploy.sh --hosts-only --no-snapshot --yes
-
-# DNS only
-sudo ./github520-deploy.sh --dns-only
-
-# Static IPv4
-sudo ./github520-deploy.sh --static-ip
-
-# Preview
-./github520-deploy.sh --dry-run --static-ip
-
-# Custom source
-sudo ./github520-deploy.sh --source https://raw.hellogithub.com/hosts
-```
-
-## Execution flow
-
-1. Parse options. `--help` works without root.
-2. Check privileges and re-execute through sudo if needed.
-3. Reject non-Linux, WSL and containers. Warn and ask on virtual machines.
-4. On Btrfs + snapper, list configs/subvolumes and ask for a snapshot range with a 30-second countdown.
-5. Detect network backends and the default route.
-6. Probe GitHub520 sources and download the first valid block, falling back on failures.
-7. Back up `/etc/hosts`, remove the old block, append the new block, verify, and flush DNS caches.
-8. If `--static-ip` or `--dns-only` is given, collect network values, confirm, apply, verify, and roll back on failure.
-9. Print a summary.
+1. Welcome.
+2. Root/sudo check.
+3. Arch Linux check.
+4. Optional Btrfs/snapper snapshot.
+5. Network backend detection (NetworkManager first).
+6. GitHub520 source check and download.
+7. Backup and update `/etc/hosts`.
+8. Optional static IPv4/DNS configuration.
+9. Install and enable `github520-update.timer`.
+10. Cleanup and final summary.
 
 ## Snapshots
 
-On Btrfs with snapper, the menu offers:
+On Btrfs with snapper:
 
 ```text
-1) Snapshot all snapper configs (all subvolumes)
+1) Snapshot all snapper configs
 2) Snapshot only the @ subvolume (root config)
 3) Do not snapshot (abort deployment)
 ```
 
-A timeout, snapper error or option 3 aborts the deployment. `--no-snapshot` skips the step. `--yes` does not choose a snapshot range automatically.
+A timeout, snapper error or option 3 aborts the deployment. Non-Btrfs systems and systems without snapper configs skip this step.
 
-## Network modes
+## Network configuration
 
-Backend priority: NetworkManager → netplan → systemd-networkd → ifupdown.
+Priority:
 
-- `--static-ip`: uses the current interface and gateway, asks for an IPv4 CIDR, DNS1 and optional DNS2, confirms, applies, verifies and rolls back on failure.
-- `--dns-only`: keeps the current IP/gateway and changes DNS only. It updates the selected backend and verifies the resolver configuration.
+1. NetworkManager
+2. systemd-networkd
+3. ifupdown
 
-Changing the IP or restarting an interface can interrupt SSH. Use a local/out-of-band console when possible. Backups are stored under `/var/backups/github520-*`.
+Static configuration:
 
-## Rollback and backups
+- NetworkManager: `nmcli connection modify ...` + `connection up`;
+- systemd-networkd: writes `/etc/systemd/network/99-github520-<iface>.network` and reloads;
+- ifupdown: rewrites the target stanza. Complex options such as MTU/bridge/bond/VLAN may be lost.
 
-- `/etc/hosts.github520-backup.<timestamp>.<pid>` — hosts backup.
-- `/var/backups/github520-<timestamp>.<pid>/` — network configuration backups, including NetworkManager state, netplan/networkd/ifupdown files and `/etc/resolv.conf` if it was modified.
+DNS is applied through systemd-resolved, resolvconf, or a direct `/etc/resolv.conf` write (symlinks are not overwritten).
 
-On hosts write/verification failure, the exit trap restores the hosts backup. On network verification failure or fatal signal, the script attempts a rollback. Automatic rollback cannot survive power loss, kernel panic or `kill -9`; use the backups or a VM/disk snapshot if needed.
+Changing the IP or restarting an interface may interrupt SSH. Use a local/out-of-band console.
 
-## Sources
+## systemd timer and service
 
-Built-in sources:
+Installed script:
 
-1. `https://raw.hellogithub.com/hosts` (official)
-2. `https://fastly.jsdelivr.net/gh/521xueweihan/GitHub520@main/hosts`
-3. `https://gcore.jsdelivr.net/gh/521xueweihan/GitHub520@main/hosts`
-4. `https://testingcf.jsdelivr.net/gh/521xueweihan/GitHub520@main/hosts`
-5. `https://quantil.jsdelivr.net/gh/521xueweihan/GitHub520@main/hosts`
-6. `https://cdn.jsdelivr.net/gh/521xueweihan/GitHub520@main/hosts`
-7. `https://raw.githubusercontent.com/521xueweihan/GitHub520/main/hosts`
+```text
+/usr/local/bin/github520-arch.sh
+```
 
-Each source is tried up to twice. Failures, non-200 status, empty files or invalid content trigger the next source. If every source fails, the script exits before touching `/etc/hosts`. `--source` replaces the built-in list.
+Unit files:
+
+```text
+/etc/systemd/system/github520-update.service
+/etc/systemd/system/github520-update.timer
+```
+
+Timer schedule:
+
+```ini
+OnBootSec=5min
+OnUnitActiveSec=1h
+AccuracySec=1min
+RandomizedDelaySec=30s
+Persistent=true
+```
+
+Useful commands:
+
+```bash
+systemctl status github520-update.timer
+systemctl list-timers github520-update.timer
+systemctl start github520-update.service
+journalctl -u github520-update.service
+tail -f /var/log/github520/update.log
+```
+
+## Logs and backups
+
+- Update log: `/var/log/github520/update.log` (rotated at 1 MiB).
+- Hosts backups: `/var/backups/github520/hosts.<timestamp>.<pid>` (latest 24).
+- Network backups: `/var/backups/github520/net-<timestamp>.<pid>/`.
+
+Restore hosts:
+
+```bash
+sudo cp /var/backups/github520/hosts.<timestamp>.<pid> /etc/hosts
+```
+
+## Uninstall
+
+```bash
+sudo systemctl disable --now github520-update.timer
+sudo rm -f /etc/systemd/system/github520-update.timer
+sudo rm -f /etc/systemd/system/github520-update.service
+sudo systemctl daemon-reload
+sudo rm -f /usr/local/bin/github520-arch.sh
+```
+
+Restore `/etc/hosts` from the backup if needed.
 
 ## Security notes
 
-- The script runs as root and modifies `/etc/hosts`; it may also change network configuration. Review it before use.
-- Hosts content comes from third-party CDNs/mirrors. The script validates structure, markers and entry count, but does **not** enforce a strict domain allowlist. A compromised mirror could inject arbitrary DNS entries. For high-security environments, use only the official source or add your own allowlist.
-- The script does not install packages, modify firewalls or change SSH configuration.
-- `--dry-run` makes no persistent changes, but still performs HTTPS requests.
-- No credentials are stored by the script; sudo authentication is handled by sudo.
+- The installer runs as root and modifies system files, network settings and systemd units.
+- Hosts content comes from third-party CDNs/mirrors. The script validates structure and entry count but does not enforce a domain allowlist. Use the official source or add your own allowlist for high-security environments.
+- The timer executes a local root-owned script. Ensure `/usr/local/bin/github520-arch.sh` remains root-owned and not writable by unprivileged users.
+- No packages, firewall rules or SSH configuration are modified.
+- This is a beta release.
 
 ## FAQ
 
-### 1. “Virtual machine detected” — can I continue?
+### 1. Why is only Arch Linux supported?
 
-Yes. Confirm with `y`, or use `--allow-vm` / `--yes`. Docker, Podman, LXC, WSL and other containers are still rejected.
+The script checks `ID=arch` in `/etc/os-release`. Arch derivatives currently fail this check.
 
-### 2. Why are WSL and Docker rejected?
+### 2. Does it work in Arch WSL/containers?
 
-`/etc/hosts` and network settings inside WSL/containers are typically isolated from the host, so changes may not affect the intended system. Network backends may also be unavailable.
+The systemd check (`/run/systemd/system`) usually fails in WSL/containers. Do not modify host networking from an isolated environment.
 
 ### 3. The snapshot menu timed out
 
-That is intentional: no valid selection within 30 seconds aborts. Re-run and choose, or use `--no-snapshot`.
+A valid selection is required within 30 seconds. Re-run and choose 1 or 2, or choose 3 to abort.
 
-### 4. All GitHub520 sources failed
+### 4. All sources failed
 
-The script exits before modifying hosts. Check connectivity to `https://raw.hellogithub.com/hosts`, DNS, proxy settings, firewall/security groups and TLS interception. You can specify a known-good source with `--source`.
+The script exits before modifying hosts. Check network, DNS, proxy, firewall, TLS interception and system time.
 
-### 5. `/etc/hosts` is immutable or not writable
+### 5. `/etc/hosts` is immutable
 
-Check `lsattr /etc/hosts`. If the immutable bit is set, run `sudo chattr -i /etc/hosts`, update, then restore the attribute if needed. Also check that the filesystem is not mounted read-only.
+Check `lsattr /etc/hosts`; if the `i` attribute is set, run `sudo chattr -i /etc/hosts`.
 
-### 6. Hosts updated but GitHub is still slow
+### 6. Hosts did not change
 
-DNS caching, DoH/proxy bypass, non-optimal GitHub520 IPs, uncovered domains or firewall restrictions are common causes. Check with `getent hosts github.com`.
+The content may already be identical. The script skips backup/write and logs `Hosts already up to date`.
 
-### 7. SSH disconnected after a static IP change
+### 7. The timer is not running
 
-Use a cloud/local console, inspect `/var/backups/github520-*`, restore the old configuration and restart the network backend, or restore a VM/disk snapshot.
-
-### 8. `--dns-only` did not take effect
-
-Check `resolvectl dns` and `/etc/resolv.conf`. The active backend may be dnsmasq/NetworkManager, `/etc/resolv.conf` may be a symlink, another config may have higher priority, or the connection may not have been reactivated.
-
-### 9. Will ifupdown bridge/bond/VLAN settings survive?
-
-`--static-ip` rewrites the target ifupdown stanza and may drop options such as MTU, bridge, bond, VLAN and pre-up. For complex networking, avoid `--static-ip` and edit the configuration manually. `--dns-only` only replaces `dns-nameservers`.
-
-### 10. Why is hosts-only the default?
-
-To avoid breaking networking on unattended or remote machines. Network changes are explicit via `--static-ip` or `--dns-only`.
-
-### 11. Does `--yes` choose a snapshot automatically?
-
-No. It only auto-confirms the VM warning and network-change confirmation. Use `--no-snapshot` for automation.
-
-### 12. Why does `--dry-run` not ask for IP/DNS?
-
-It does not apply network changes, so it does not collect those values. It still shows the selected network mode/backend and the proposed hosts diff.
-
-### 13. How do I uninstall or restore?
-
-Restore the hosts backup:
+Check:
 
 ```bash
-sudo cp /etc/hosts.github520-backup.<timestamp>.<pid> /etc/hosts
+systemctl status github520-update.timer
+systemctl list-timers github520-update.timer
+journalctl -u github520-update.service
 ```
 
-Or delete the block:
+Also verify `/usr/local/bin/github520-arch.sh` exists and the unit files have not been edited without `daemon-reload`.
 
-```bash
-sudo sed -i '/# GitHub520 Host Start/,/# GitHub520 Host End/d' /etc/hosts
-```
+### 8. Does the hourly update change networking?
 
-Restore network configuration from `/var/backups/github520-*`.
+No. `--update` only updates hosts and flushes DNS caches. It does not create snapshots, change IP/DNS, or reinstall the timer.
 
-### 14. Why is the output English?
+### 9. SSH disconnected after a static IP change
 
-Many TTYs and rescue environments cannot render Chinese correctly. This README provides Chinese documentation; runtime logs remain English.
+Use a local/cloud console, restore files from `/var/backups/github520/net-*`, restart the network backend, or restore a snapshot.
 
-## Disclaimer
+### 10. Why NetworkManager first?
 
-This project is not affiliated with GitHub520. Use it at your own risk. Always keep backups and test on a non-critical machine first.
+It is the most common network stack on Arch desktops/servers. The script uses an active `nmcli` connection first, then falls back to systemd-networkd/ifupdown.
+
+### 11. DNS did not change
+
+Check `resolvectl dns` and `/etc/resolv.conf`. `/etc/resolv.conf` symlinks are not overwritten; another backend may have higher priority.
+
+### 12. Will ifupdown bridge/bond/VLAN settings survive?
+
+Static ifupdown configuration rewrites the stanza and may drop extra options. Use manual configuration or a snapshot for complex networking.
+
+### 13. How do I uninstall?
+
+Disable/remove the timer and service, remove `/usr/local/bin/github520-arch.sh`, then restore `/etc/hosts` from backup.
+
+### 14. Is this stable?
+
+No. This is **v0.1 beta**. Keep backups and report issues.
