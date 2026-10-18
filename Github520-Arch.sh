@@ -2,7 +2,7 @@
 # =============================================================================
 # Github520-Arch.sh
 #
-# GitHub520 hosts installer for Arch Linux.
+# GitHub520 hosts manager for Arch Linux.
 #
 # Version : v0.1-beta
 # Author  : 白丝小猫娘 (WS-CatGirl)
@@ -12,20 +12,15 @@
 #   https://gitee.com/wscatgirl/github520-deploy
 #   https://gitcode.com/WS_CatGirl/github520-deploy
 #
-# What this script does:
-#   0. Welcome screen.
-#   1. Root/sudo privilege handling.
-#   2. Arch Linux check (os-release ID=arch).
-#   3. Optional Btrfs/snapper snapshot.
-#   4. Network backend detection (NetworkManager first).
-#   5. GitHub520 source check and hosts download.
-#   6. Backup and update /etc/hosts.
-#   7. Optional static IPv4/DNS configuration.
-#   8. Install a systemd service + hourly timer for automatic updates.
-#   9. Cleanup and final summary.
+# Installed CLI:
+#   /usr/local/bin/github520-arch
+#
+# Commands:
+#   install / reinstall / update / refresh / status / logs / restore
+#   --uninstall / --uninstall-completely
 #
 # The timer runs:
-#   /usr/local/bin/github520-arch.sh --update
+#   /usr/local/bin/github520-arch --update --systemd
 # and writes to /var/log/github520/update.log.
 #
 # Requirements: Arch Linux, systemd, bash 4+, curl, iproute2, coreutils.
@@ -45,11 +40,20 @@ RESOLV_FILE="/etc/resolv.conf"
 BACKUP_DIR="/var/backups/github520"
 LOG_DIR="/var/log/github520"
 UPDATE_LOG="$LOG_DIR/update.log"
-INSTALL_PATH="/usr/local/bin/github520-arch.sh"
+INSTALL_PATH="/usr/local/bin/github520-arch"
+LEGACY_INSTALL_PATH="/usr/local/bin/github520-arch.sh"
+ORIGINAL_HOSTS_BACKUP="$BACKUP_DIR/hosts.original"
 SERVICE_NAME="github520-update.service"
 TIMER_NAME="github520-update.timer"
 SNAPSHOT_TIMEOUT=30
 MAX_HOSTS_BACKUPS=24
+
+COMMAND=""
+SYSTEMD_MODE=0
+MANUAL_UPDATE=0
+FOLLOW_LOG=0
+FORCE=0
+RESTORE_TARGET=""
 
 GITHUB520_REPO_URL="https://github.com/521xueweihan/GitHub520"
 REPO_URLS=(
@@ -149,10 +153,17 @@ err() {
 
 die() {
     err "$*"
-    if [ "$UPDATE_MODE" -eq 1 ]; then
-        printf '[%s] [FAIL] GitHub520 hourly update failed.\n' "$(date '+%Y-%m-%d %H:%M:%S')"
+    if [ "$UPDATE_MODE" -eq 1 ] || [ "$MANUAL_UPDATE" -eq 1 ]; then
+        append_update_log "[FAIL] ${*}"
     fi
     exit 1
+}
+
+append_update_log() {
+    local message=$1
+
+    [ -d "$LOG_DIR" ] || mkdir -p "$LOG_DIR" 2>/dev/null || return 0
+    printf '[%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$message" >> "$UPDATE_LOG" 2>/dev/null || true
 }
 
 ensure_dir() {
@@ -187,22 +198,39 @@ EOF
 
 usage() {
     cat <<'EOF'
-GitHub520-Arch.sh - GitHub520 hosts installer for Arch Linux (beta)
+GitHub520-Arch.sh - GitHub520 manager for Arch Linux (beta)
 
 Usage:
-  sudo ./Github520-Arch.sh
-  sudo ./Github520-Arch.sh --update
-  ./Github520-Arch.sh --help
-  ./Github520-Arch.sh --version
+  sudo github520-arch [command]
+  sudo ./Github520-Arch.sh [command]
+  github520-arch                 # show status and a short help hint
+
+Commands:
+  install, --install             Run the interactive installer and install
+                                 /usr/local/bin/github520-arch.
+  reinstall                      Re-run the installer using the installed
+                                 script (same as install).
+  update, refresh, --update      Immediately download and refresh /etc/hosts.
+  status                         Show version, hosts count, timer state,
+                                 last log line and backup count.
+  logs [-f]                      Show the update log; -f follows it.
+  restore [latest|original|FILE] Restore /etc/hosts from a backup.
+  --uninstall                    Remove the CLI and systemd units, but keep
+                                 /etc/hosts, logs and backups.
+  --uninstall-completely         Restore the original /etc/hosts, then remove
+                                 the CLI, units, logs, backups and temp files.
+  version, --version             Show version.
+  help, --help                   Show this help.
+
+Internal:
+  --update --systemd             Used by github520-update.service. Redirects
+                                 all output to /var/log/github520/update.log.
 
 Options:
-  -h, --help       Show this help and exit.
-  -V, --version    Show the script version and exit.
-      --update     Internal mode used by the systemd timer. Updates
-                   /etc/hosts non-interactively, writes the result to
-                   /var/log/github520/update.log and exits.
+  -f, --follow                   Follow the log (with logs).
+      --force                    Skip the confirmation for --uninstall-completely.
 
-Normal install flow:
+Install flow:
   1. Welcome
   2. Root/sudo check
   3. Arch Linux check
@@ -224,16 +252,52 @@ EOF
 parse_args() {
     while [ "$#" -gt 0 ]; do
         case "$1" in
-            -h|--help)
+            -h|--help|help)
                 usage
                 exit 0
                 ;;
-            -V|--version)
+            -V|--version|version)
                 printf '%s %s (%s)\n' "$SCRIPT_NAME" "$VERSION" "$RELEASE_CHANNEL"
                 exit 0
                 ;;
-            --update)
-                UPDATE_MODE=1
+            install|--install|reinstall)
+                COMMAND="install"
+                ;;
+            update|refresh|--update|--refresh)
+                COMMAND="update"
+                ;;
+            status|--status)
+                COMMAND="status"
+                ;;
+            logs|--logs)
+                COMMAND="logs"
+                ;;
+            uninstall|--uninstall)
+                COMMAND="uninstall"
+                ;;
+            uninstall-completely|--uninstall-completely)
+                COMMAND="uninstall-complete"
+                ;;
+            restore|--restore)
+                COMMAND="restore"
+                if [ "$#" -gt 1 ]; then
+                    case "$2" in
+                        -*) ;;
+                        *)
+                            RESTORE_TARGET=$2
+                            shift
+                            ;;
+                    esac
+                fi
+                ;;
+            --systemd)
+                SYSTEMD_MODE=1
+                ;;
+            -f|--follow)
+                FOLLOW_LOG=1
+                ;;
+            --force)
+                FORCE=1
                 ;;
             --)
                 shift
@@ -244,13 +308,15 @@ parse_args() {
                 break
                 ;;
             *)
-                err "Unknown option: $1"
+                err "Unknown command or option: $1"
                 err "Run '$SCRIPT_NAME --help' for usage."
                 exit 2
                 ;;
         esac
         shift
     done
+
+    [ -n "$COMMAND" ] || COMMAND="status"
 }
 
 # -----------------------------------------------------------------------------
@@ -1398,10 +1464,27 @@ count_github520_entries() {
 prune_hosts_backups() {
     local -a files=()
 
-    mapfile -t files < <(ls -1t "$BACKUP_DIR"/hosts.* 2>/dev/null || true)
+    mapfile -t files < <(ls -1t "$BACKUP_DIR"/hosts.[0-9]* 2>/dev/null || true)
     if [ "${#files[@]}" -gt "$MAX_HOSTS_BACKUPS" ]; then
         rm -f -- "${files[@]:MAX_HOSTS_BACKUPS}"
     fi
+}
+
+ensure_original_hosts_backup() {
+    [ -f "$HOSTS_FILE" ] || die "$HOSTS_FILE does not exist."
+    ensure_dir "$BACKUP_DIR" 0700
+
+    if [ -f "$ORIGINAL_HOSTS_BACKUP" ]; then
+        log "Original hosts backup already exists: $ORIGINAL_HOSTS_BACKUP"
+        return 0
+    fi
+
+    cp -L -p -- "$HOSTS_FILE" "$ORIGINAL_HOSTS_BACKUP" || \
+        die "Failed to create original hosts backup."
+    cmp -s -- "$HOSTS_FILE" "$ORIGINAL_HOSTS_BACKUP" || \
+        die "Original hosts backup verification failed."
+    chmod 0644 "$ORIGINAL_HOSTS_BACKUP" 2>/dev/null || true
+    log "Original hosts backup: $ORIGINAL_HOSTS_BACKUP"
 }
 
 backup_hosts_file() {
@@ -1539,13 +1622,15 @@ install_script_copy() {
     [ -n "$src" ] || src="$PWD/$0"
 
     if [ "$src" = "$INSTALL_PATH" ]; then
-        log "Script is already installed at $INSTALL_PATH."
-        return 0
+        log "CLI is already installed at $INSTALL_PATH."
+    else
+        ensure_dir "$(dirname -- "$INSTALL_PATH")" 0755
+        install -m 0755 -- "$src" "$INSTALL_PATH" || die "Failed to install $INSTALL_PATH."
+        ok "Installed CLI: $INSTALL_PATH"
     fi
 
-    ensure_dir "$(dirname -- "$INSTALL_PATH")" 0755
-    install -m 0755 -- "$src" "$INSTALL_PATH" || die "Failed to install $INSTALL_PATH."
-    ok "Installed script copy: $INSTALL_PATH"
+    ln -sfn "$INSTALL_PATH" "$LEGACY_INSTALL_PATH" || \
+        warn "Could not create compatibility symlink: $LEGACY_INSTALL_PATH"
 }
 
 install_timer() {
@@ -1564,7 +1649,7 @@ Wants=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=$INSTALL_PATH --update
+ExecStart=$INSTALL_PATH --update --systemd
 Environment=LC_ALL=C
 Nice=10
 TimeoutStartSec=900
@@ -1603,6 +1688,231 @@ EOF
 }
 
 # -----------------------------------------------------------------------------
+# CLI management: status, logs, restore, uninstall
+# -----------------------------------------------------------------------------
+latest_hosts_backup() {
+    local latest=""
+
+    latest=$(ls -1t "$BACKUP_DIR"/hosts.[0-9]* 2>/dev/null | head -n 1 || true)
+    printf '%s' "$latest"
+}
+
+strip_github520_block_from_hosts() {
+    local tmp
+
+    [ -f "$HOSTS_FILE" ] || return 1
+    tmp=$(mktemp "${TMPDIR:-/tmp}/github520-strip.XXXXXX") || return 1
+
+    if ! awk '
+        {
+            line = tolower($0)
+            if (line ~ /^[[:space:]]*#[[:space:]]*github520[[:space:]]+host[[:space:]]+start/) {
+                skip = 1
+                next
+            }
+            if (line ~ /^[[:space:]]*#[[:space:]]*github520[[:space:]]+host[[:space:]]+end/) {
+                skip = 0
+                next
+            }
+            if (!skip) print
+        }
+    ' "$HOSTS_FILE" > "$tmp"; then
+        rm -f -- "$tmp"
+        return 1
+    fi
+
+    if ! cat -- "$tmp" > "$HOSTS_FILE"; then
+        rm -f -- "$tmp"
+        return 1
+    fi
+
+    rm -f -- "$tmp"
+    return 0
+}
+
+restore_hosts_for_complete_uninstall() {
+    local src=""
+
+    if [ -f "$ORIGINAL_HOSTS_BACKUP" ]; then
+        src=$ORIGINAL_HOSTS_BACKUP
+    else
+        src=$(latest_hosts_backup)
+    fi
+
+    if [ -n "$src" ] && [ -f "$src" ]; then
+        log "Restoring $HOSTS_FILE from $src..."
+        cp -L -p -- "$src" "$HOSTS_FILE" || return 1
+    else
+        warn "No hosts backup found; removing the GitHub520 block from the current file."
+        [ -f "$HOSTS_FILE" ] || return 1
+    fi
+
+    strip_github520_block_from_hosts || return 1
+    log "GitHub520 entries removed from $HOSTS_FILE."
+    return 0
+}
+
+remove_systemd_units() {
+    local service_file="/etc/systemd/system/$SERVICE_NAME"
+    local timer_file="/etc/systemd/system/$TIMER_NAME"
+
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl disable --now "$TIMER_NAME" >/dev/null 2>&1 || true
+        systemctl stop "$SERVICE_NAME" >/dev/null 2>&1 || true
+        systemctl reset-failed "$SERVICE_NAME" >/dev/null 2>&1 || true
+    fi
+
+    rm -f -- "$service_file" "$timer_file"
+    rm -rf -- "/etc/systemd/system/$SERVICE_NAME.d" "/etc/systemd/system/$TIMER_NAME.d"
+    rm -f -- "/etc/systemd/system/timers.target.wants/$TIMER_NAME"
+    rm -f -- "/etc/systemd/system/multi-user.target.wants/$SERVICE_NAME"
+
+    if command -v systemctl >/dev/null 2>&1; then
+        systemctl daemon-reload >/dev/null 2>&1 || true
+    fi
+
+    log "Removed systemd units: $TIMER_NAME, $SERVICE_NAME"
+}
+
+remove_installed_cli() {
+    rm -f -- "$INSTALL_PATH" "$LEGACY_INSTALL_PATH"
+    log "Removed installed CLI: $INSTALL_PATH"
+}
+
+purge_installation_data() {
+    rm -rf -- "$LOG_DIR" "$BACKUP_DIR"
+    rm -f -- /etc/hosts.github520-backup.* 2>/dev/null || true
+    rm -rf -- /tmp/github520-arch.* /tmp/github520-arch-update.* /tmp/github520-deploy.* \
+        /tmp/github520-strip.* /tmp/github520-restore.* 2>/dev/null || true
+    log "Removed logs, backups and temporary files."
+}
+
+do_uninstall() {
+    local mode=$1
+
+    if [ "$mode" = "complete" ]; then
+        if [ "$FORCE" -ne 1 ]; then
+            warn "This will restore the original /etc/hosts and remove all GitHub520 data."
+            if ! confirm_action "Completely uninstall GitHub520-Arch?"; then
+                log "Uninstall cancelled."
+                exit 0
+            fi
+        fi
+        log "Starting complete uninstall..."
+    else
+        log "Starting uninstall (hosts, logs and backups will be kept)..."
+    fi
+
+    remove_systemd_units
+
+    if [ "$mode" = "complete" ]; then
+        restore_hosts_for_complete_uninstall || \
+            die "Could not restore $HOSTS_FILE; logs and backups were kept."
+        remove_installed_cli
+        purge_installation_data
+        printf '\nGitHub520-Arch has been completely removed.\n'
+        printf '/etc/hosts was restored and GitHub520 entries were removed.\n'
+    else
+        remove_installed_cli
+        printf '\nGitHub520-Arch CLI and systemd units have been removed.\n'
+        printf 'Kept on purpose:\n'
+        printf '  hosts file : %s\n' "$HOSTS_FILE"
+        printf '  logs       : %s\n' "$LOG_DIR"
+        printf '  backups    : %s\n' "$BACKUP_DIR"
+        printf 'Use --uninstall-completely to restore hosts and purge all data.\n'
+    fi
+}
+
+restore_hosts_command() {
+    local target=$RESTORE_TARGET
+    local tmp=""
+
+    if [ -z "$target" ] || [ "$target" = "latest" ]; then
+        target=$(latest_hosts_backup)
+        if [ -z "$target" ]; then
+            target=$ORIGINAL_HOSTS_BACKUP
+        fi
+    elif [ "$target" = "original" ]; then
+        target=$ORIGINAL_HOSTS_BACKUP
+    fi
+
+    if [ -z "$target" ] || [ ! -f "$target" ]; then
+        die "No matching hosts backup found: ${target:-none}"
+    fi
+
+    tmp=$(mktemp "${TMPDIR:-/tmp}/github520-restore.XXXXXX") || \
+        die "Failed to create a temporary restore file."
+    cp -L -p -- "$target" "$tmp" || {
+        rm -f -- "$tmp"
+        die "Failed to read $target."
+    }
+
+    backup_hosts_file
+    if ! cat -- "$tmp" > "$HOSTS_FILE"; then
+        rm -f -- "$tmp"
+        die "Failed to restore $HOSTS_FILE."
+    fi
+    rm -f -- "$tmp"
+    ok "Restored $HOSTS_FILE from $target"
+}
+
+show_status() {
+    local pretty="unknown" timer_enabled="unknown" timer_active="unknown"
+    local entries=0 backups=0 last_line="" installed="no"
+
+    if [ -r /etc/os-release ]; then
+        pretty=$(grep -m1 '^PRETTY_NAME=' /etc/os-release 2>/dev/null |
+            cut -d= -f2- | tr -d '"' || true)
+        [ -n "$pretty" ] || pretty="unknown"
+    fi
+
+    if [ -x "$INSTALL_PATH" ]; then
+        installed="yes"
+    fi
+
+    if [ -f "$HOSTS_FILE" ]; then
+        entries=$(count_github520_entries "$HOSTS_FILE")
+    fi
+
+    if [ -f "$UPDATE_LOG" ]; then
+        last_line=$(tail -n 1 "$UPDATE_LOG" 2>/dev/null || true)
+    fi
+
+    backups=$(ls -1 "$BACKUP_DIR"/hosts.[0-9]* 2>/dev/null | wc -l | tr -d ' ' || true)
+
+    if command -v systemctl >/dev/null 2>&1; then
+        timer_enabled=$(systemctl is-enabled "$TIMER_NAME" 2>/dev/null || true)
+        timer_active=$(systemctl is-active "$TIMER_NAME" 2>/dev/null || true)
+        [ -n "$timer_enabled" ] || timer_enabled="unknown"
+        [ -n "$timer_active" ] || timer_active="unknown"
+    fi
+
+    printf '%sGitHub520-Arch%s %s (%s)\n' "$C_INFO" "$C_RESET" "$VERSION" "$RELEASE_CHANNEL"
+    printf '  System       : %s\n' "$pretty"
+    printf '  CLI          : %s (%s)\n' "$INSTALL_PATH" "$installed"
+    printf '  Hosts file   : %s\n' "$HOSTS_FILE"
+    printf '  GitHub520    : %s entries\n' "$entries"
+    printf '  Timer        : enabled=%s active=%s\n' "$timer_enabled" "$timer_active"
+    printf '  Backups      : %s\n' "$backups"
+    printf '  Update log   : %s\n' "$UPDATE_LOG"
+    if [ -n "$last_line" ]; then
+        printf '  Last update  : %s\n' "$last_line"
+    fi
+    printf '\nCommands: install | update | status | logs [-f] | restore | --uninstall | --uninstall-completely\n'
+    printf 'Run '\''%s --help'\'' for full help.\n' "$SCRIPT_NAME"
+}
+
+show_logs() {
+    [ -f "$UPDATE_LOG" ] || die "Update log not found: $UPDATE_LOG"
+
+    if [ "$FOLLOW_LOG" -eq 1 ]; then
+        tail -n 50 -f "$UPDATE_LOG"
+    else
+        tail -n 100 "$UPDATE_LOG"
+    fi
+}
+
+# -----------------------------------------------------------------------------
 # Update mode / installer summary
 # -----------------------------------------------------------------------------
 init_update_log() {
@@ -1623,7 +1933,52 @@ init_update_log() {
         "$(date '+%Y-%m-%d %H:%M:%S')" "$VERSION" "$RELEASE_CHANNEL"
 }
 
+run_install() {
+    TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/github520-arch.XXXXXX") || \
+        die "Failed to create a temporary directory."
+    log "Temporary workspace: $TMP_DIR"
+
+    ensure_original_hosts_backup
+
+    detect_filesystem_and_snapshot
+    detect_network_backends
+    detect_default_route
+
+    check_github520
+    fetch_hosts_block
+    build_new_hosts
+    install_new_hosts
+    flush_dns_caches
+
+    ask_network_change
+    install_timer
+
+    if [ -n "$TMP_DIR" ] && [ -d "$TMP_DIR" ]; then
+        rm -rf -- "$TMP_DIR" 2>/dev/null || true
+        TMP_DIR=""
+    fi
+
+    print_final_summary
+}
+
+run_manual_update() {
+    MANUAL_UPDATE=1
+    ensure_dir "$LOG_DIR" 0755
+    append_update_log "[INFO] Manual update started."
+
+    TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/github520-arch-update.XXXXXX") || \
+        die "Failed to create a temporary directory."
+
+    log "Manual GitHub520 update started."
+    apply_hosts_update
+    flush_dns_caches
+
+    append_update_log "[ OK ] Manual update succeeded (source=${SELECTED_HOSTS_URL}, entries=${HOSTS_ENTRY_COUNT})."
+    ok "Manual update completed. Hosts entries: $HOSTS_ENTRY_COUNT"
+}
+
 run_update_mode() {
+    UPDATE_MODE=1
     init_update_log
 
     TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/github520-arch-update.XXXXXX") || \
@@ -1654,9 +2009,11 @@ EOF
     printf '  Your catgirl has tucked GitHub520 safely into Arch Linux.\n'
     printf '\n'
     printf '  Version        : %s (%s)\n' "$VERSION" "$RELEASE_CHANNEL"
+    printf '  CLI            : %s\n' "$INSTALL_PATH"
     printf '  Hosts file     : %s\n' "$HOSTS_FILE"
     printf '  Hosts source   : %s\n' "$SELECTED_HOSTS_URL"
     printf '  Hosts backup   : %s\n' "${HOSTS_BACKUP:-none}"
+    printf '  Original hosts : %s\n' "$ORIGINAL_HOSTS_BACKUP"
     printf '  Snapshot       : %s\n' "$SNAPSHOT_DONE"
     printf '  Timer          : %s (hourly)\n' "$TIMER_NAME"
     printf '  Update log     : %s\n' "$UPDATE_LOG"
@@ -1673,11 +2030,14 @@ EOF
     fi
     printf '\n'
     printf '  常用命令 / Useful commands:\n'
+    printf '    sudo github520-arch status\n'
+    printf '    sudo github520-arch update\n'
+    printf '    sudo github520-arch logs -f\n'
+    printf '    sudo github520-arch restore\n'
+    printf '    sudo github520-arch --uninstall\n'
+    printf '    sudo github520-arch --uninstall-completely\n'
     printf '    systemctl status %s\n' "$TIMER_NAME"
-    printf '    systemctl list-timers %s\n' "$TIMER_NAME"
     printf '    journalctl -u %s\n' "$SERVICE_NAME"
-    printf '    tail -f %s\n' "$UPDATE_LOG"
-    printf '    sudo systemctl start %s\n' "$SERVICE_NAME"
     printf '\n'
     printf '  项目仓库 / Repositories:\n'
     printf '    GitHub : %s\n' "${REPO_URLS[0]}"
@@ -1699,41 +2059,61 @@ EOF
 # Main
 # -----------------------------------------------------------------------------
 main() {
+    local welcome_shown=0
+
     parse_args "$@"
 
-    if [ "$UPDATE_MODE" -eq 1 ]; then
-        require_root "$@"
-        detect_arch
-        run_update_mode
-    fi
+    case "$COMMAND" in
+        status)
+            show_status
+            exit 0
+            ;;
+        logs)
+            show_logs
+            exit 0
+            ;;
+        install)
+            if [ "$(id -u)" -eq 0 ]; then
+                show_welcome
+                welcome_shown=1
+            fi
 
-    show_welcome
-    require_root "$@"
-    detect_arch
+            require_root "$@"
 
-    TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/github520-arch.XXXXXX") || \
-        die "Failed to create a temporary directory."
-    log "Temporary workspace: $TMP_DIR"
+            if [ "$welcome_shown" -eq 0 ]; then
+                show_welcome
+            fi
 
-    detect_filesystem_and_snapshot
-    detect_network_backends
-    detect_default_route
-
-    check_github520
-    fetch_hosts_block
-    build_new_hosts
-    install_new_hosts
-    flush_dns_caches
-
-    ask_network_change
-    install_timer
-
-    if [ -n "$TMP_DIR" ] && [ -d "$TMP_DIR" ]; then
-        rm -rf -- "$TMP_DIR" 2>/dev/null || true
-        TMP_DIR=""
-    fi
-
-    print_final_summary
+            detect_arch
+            run_install
+            ;;
+        update)
+            require_root "$@"
+            detect_arch
+            if [ "$SYSTEMD_MODE" -eq 1 ]; then
+                run_update_mode
+            else
+                run_manual_update
+            fi
+            ;;
+        uninstall)
+            require_root "$@"
+            do_uninstall "retain"
+            ;;
+        uninstall-complete)
+            require_root "$@"
+            do_uninstall "complete"
+            ;;
+        restore)
+            require_root "$@"
+            restore_hosts_command
+            ;;
+        *)
+            err "Unknown command: $COMMAND"
+            usage
+            exit 2
+            ;;
+    esac
 }
 
 if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then

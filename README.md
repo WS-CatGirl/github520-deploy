@@ -1,15 +1,15 @@
 # GitHub520-Arch
 
-面向 **Arch Linux** 的 GitHub520 hosts 安装器（Beta）。
+面向 **Arch Linux** 的 GitHub520 管理器（Beta）。
 
 - 当前版本：**v0.1 (beta)**
 - 作者：**白丝小猫娘 (WS-CatGirl)**
-- 新脚本：[Github520-Arch.sh](Github520-Arch.sh)
-- 旧版通用脚本：[github520-deploy.sh](github520-deploy.sh)（仍然保留，本 README 主要介绍 Arch 版）
+- 源码：[Github520-Arch.sh](Github520-Arch.sh)
+- 旧版通用脚本：[github520-deploy.sh](github520-deploy.sh)（仍保留，但本 README 主要介绍 Arch 版）
 
 > 本项目不是 GitHub520 官方项目。hosts 内容来自 GitHub520 及其镜像源。
 >
-> Beta 版本可能调整行为，重要机器请先做快照或手动备份。
+> Beta 版本请先在测试机或快照中验证，并保留备份。
 
 ---
 
@@ -17,14 +17,15 @@
 
 - [功能特性](#功能特性)
 - [系统要求](#系统要求)
-- [快速开始](#快速开始)
-- [命令行参数](#命令行参数)
+- [安装](#安装)
+- [PATH 与命令](#path-与命令)
+- [命令一览](#命令一览)
 - [安装流程](#安装流程)
 - [Btrfs 与 snapper 快照](#btrfs-与-snapper-快照)
 - [网络检测与静态 IP/DNS](#网络检测与静态-ipdns)
 - [systemd timer 与 service](#systemd-timer-与-service)
 - [日志与备份](#日志与备份)
-- [更新、卸载与还原](#更新卸载与还原)
+- [卸载](#卸载)
 - [安全说明](#安全说明)
 - [常见问题 Q&A](#常见问题-qa)
 - [English](#english)
@@ -33,67 +34,127 @@
 
 ## 功能特性
 
-- 猫娘风格欢迎界面，当前版本 **v0.1 beta**。
-- 仅支持 **Arch Linux**（`/etc/os-release` 中 `ID=arch`）；Manjaro、EndeavourOS 等 Arch 衍生版会被拒绝。
-- 自动处理 root/sudo：
-  - root 直接运行；
-  - 普通用户有 sudo 时自动提权；
-  - 没有 sudo 或认证失败会给出访问拒绝提示。
-- Btrfs + snapper 环境支持创建快照，30 秒倒计时菜单。
-- 优先检测 **NetworkManager**，同时识别 systemd-networkd、ifupdown、dhcpcd、ConnMan、iwd、netctl。
-- 内置多个 GitHub520 源，单个源失败会自动切换。
-- 写入 `/etc/hosts` 前备份；写入失败或校验失败自动恢复。
-- 可选配置静态 IPv4、网关和 DNS；支持 NetworkManager、systemd-networkd、ifupdown。
-- 安装 systemd service + timer，**每小时自动更新 hosts**。
-- 自动更新成功或失败都会写入 `/var/log/github520/update.log`。
-- 运行提示以英文为主，欢迎和结尾使用双语猫娘风格；避免在 TTY 中出现大段中文乱码。
+- 安装为无扩展名可执行 CLI：`/usr/local/bin/github520-arch`
+- 在任意目录（包括 `/home`）直接使用 `sudo github520-arch`，不需要 `cd` 到项目目录
+- 无参数时显示状态与命令提示，不直接重装
+- 支持立即手动刷新 hosts
+- 支持状态、日志、备份恢复、重新安装、卸载
+- 优先检测 NetworkManager，同时支持 systemd-networkd、ifupdown
+- Btrfs + snapper 快照，30 秒倒计时
+- 内置多个 GitHub520 源，失败自动切换
+- 每小时自动更新 hosts
+- 更新成功/失败写入 `/var/log/github520/update.log`
+- 安装前保存原始 hosts，`--uninstall-completely` 可恢复
+- 猫娘风格欢迎与结束语
 
 ## 系统要求
 
-- **Arch Linux**（仅 `ID=arch`）
-- systemd（用于安装 timer/service）
+- **Arch Linux**（`/etc/os-release` 中 `ID=arch`）
+- systemd
 - bash 4+
 - `curl`
 - `ip`（iproute2）
-- `findmnt`、`awk`、`sed`、`grep`、`mktemp`、`install` 等 coreutils/util-linux 工具
+- `findmnt`、`awk`、`sed`、`grep`、`mktemp`、`install` 等工具
 - 可选：
-  - Btrfs 根文件系统 + `snapper` + `btrfs-progs`
+  - Btrfs + `snapper` + `btrfs-progs`
   - NetworkManager（推荐）
   - systemd-networkd 或 ifupdown（备用静态配置后端）
-  - systemd-resolved / resolvconf / nscd / dnsmasq（DNS 生效和缓存刷新）
+  - systemd-resolved / resolvconf / nscd / dnsmasq
 
-## 快速开始
+## 安装
 
 ```bash
 git clone https://github.com/WS-CatGirl/github520-deploy.git
 cd github520-deploy
 
 chmod +x Github520-Arch.sh
-sudo ./Github520-Arch.sh
+sudo ./Github520-Arch.sh install
 ```
 
-也可以普通用户直接运行，脚本会请求 sudo：
+安装器会：
+
+1. 显示猫娘欢迎界面；
+2. 检查 root/sudo；
+3. 检查 Arch Linux；
+4. 可选创建 Btrfs/snapper 快照；
+5. 检测网络后端；
+6. 下载并更新 `/etc/hosts`；
+7. 可选配置静态 IPv4/DNS；
+8. 安装 `/usr/local/bin/github520-arch`；
+9. 安装并启用 `github520-update.timer`；
+10. 清理临时文件并输出总结。
+
+安装完成后可以直接：
 
 ```bash
-./Github520-Arch.sh
+sudo github520-arch status
+sudo github520-arch update
+sudo github520-arch logs
 ```
 
-查看帮助或版本：
+> 不带 `install` 参数时**不会安装**，只显示状态和帮助提示。
+>
+> `sudo ./Github520-Arch.sh` 与 `sudo github520-arch` 的行为一致。
+
+## PATH 与命令
+
+脚本安装到：
+
+```text
+/usr/local/bin/github520-arch
+```
+
+`/usr/local/bin` 是 Arch Linux 的标准 PATH 目录，通常也在 sudo 的 `secure_path` 中，因此：
 
 ```bash
-./Github520-Arch.sh --help
-./Github520-Arch.sh --version
+cd /home
+sudo github520-arch status
 ```
 
-## 命令行参数
+可以直接执行，不需要位于项目目录。
 
-| 参数 | 说明 |
+如果某些 sudo 配置没有包含 `/usr/local/bin`，可以使用完整路径：
+
+```bash
+sudo /usr/local/bin/github520-arch status
+```
+
+脚本**不会修改** `/etc/profile` 或用户的 `.bashrc`。依赖标准的 `/usr/local/bin`，避免污染 PATH。
+
+同时会创建兼容入口：
+
+```text
+/usr/local/bin/github520-arch.sh -> /usr/local/bin/github520-arch
+```
+
+## 命令一览
+
+| 命令 | 说明 |
 |---|---|
-| `-h`, `--help` | 显示帮助并退出，不需要 root。 |
-| `-V`, `--version` | 显示版本并退出。 |
-| `--update` | systemd timer 使用的内部模式：非交互更新 hosts，写入日志后退出。普通用户不需要手动使用。 |
+| `sudo github520-arch` | 显示状态和简短帮助 |
+| `sudo github520-arch install` | 交互式安装 / 重新部署 |
+| `sudo github520-arch reinstall` | 同 `install`，使用已安装版本重新部署 |
+| `sudo github520-arch update` | 立即拉取并刷新 hosts |
+| `sudo github520-arch refresh` | `update` 的别名 |
+| `sudo github520-arch status` | 显示版本、hosts 条目、timer、最近日志、备份数量 |
+| `sudo github520-arch logs` | 查看更新日志 |
+| `sudo github520-arch logs -f` | 实时跟踪日志 |
+| `sudo github520-arch restore` | 恢复最近一份 hosts 备份 |
+| `sudo github520-arch restore original` | 恢复安装前保存的原始 hosts |
+| `sudo github520-arch restore /path/to/hosts` | 恢复指定备份 |
+| `sudo github520-arch --uninstall` | 卸载 CLI 和 systemd unit，**保留** hosts、日志、备份 |
+| `sudo github520-arch --uninstall-completely` | 恢复原始 hosts，并删除 CLI、unit、日志、备份和临时文件 |
+| `sudo github520-arch --uninstall-completely --force` | 跳过完整卸载确认 |
+| `github520-arch version` | 显示版本 |
+| `github520-arch help` | 显示帮助 |
 
-正常安装不建议使用 `--update`；它会跳过欢迎、快照、网络配置和 timer 安装。
+内部的 systemd 模式：
+
+```bash
+/usr/local/bin/github520-arch --update --systemd
+```
+
+该模式由 timer 调用，会把全部输出写入 `/var/log/github520/update.log`，不需要手动执行。
 
 ## 安装流程
 
@@ -104,102 +165,49 @@ sudo ./Github520-Arch.sh
   ↓
 Arch Linux 检查
   ↓
+备份原始 /etc/hosts（仅首次）
+  ↓
 Btrfs + snapper 可选快照
   ↓
 网络后端检测（NetworkManager 优先）
   ↓
-GitHub520 源检测
+GitHub520 源检测与下载
   ↓
-备份并更新 /etc/hosts
+更新 /etc/hosts
   ↓
 询问是否配置静态 IPv4 / DNS
   ↓
-安装并启用 hourly timer
+安装 CLI + hourly timer
   ↓
-清理临时文件，输出总结
+清理临时文件并输出总结
 ```
 
-### 1. 欢迎
+### 原始 hosts 备份
 
-显示猫娘风格欢迎语、`Ciallo～(∠・ω< )⌒★` 和版本 `v0.1 beta`。
-
-### 2. 权限
-
-- root：直接继续。
-- 普通用户：
-  - 有可用 sudo：自动重新执行；
-  - 需要密码：调用 `sudo -v` 请求验证；
-  - 无 sudo 或验证失败：输出 `ACCESS DENIED` 并退出。
-
-### 3. Arch 检查
-
-读取 `/etc/os-release`：
-
-```bash
-ID=arch
-```
-
-不是 Arch Linux 会立即退出，不会修改任何文件。
-
-### 4. 快照
-
-仅当根文件系统是 Btrfs 且 snapper 有配置时询问。详见下文。
-
-### 5. 网络检测
-
-先检测 NetworkManager，再检测 systemd-networkd、ifupdown、dhcpcd、ConnMan、iwd、netctl，并读取默认路由、接口、网关和当前 IP。
-
-### 6. GitHub520 更新
-
-- 逐个探测内置源；
-- 下载并校验 `# GitHub520 Host Start/End`、条目数量；
-- 失败自动切换下一个源；
-- 全部失败则退出，不修改 hosts。
-
-### 7. 写入 hosts
-
-- 备份到 `/var/backups/github520/hosts.<时间>.<pid>`；
-- 删除旧 GitHub520 块；
-- 去除末尾多余空行，追加新块；
-- 写入 `/etc/hosts` 并验证；
-- 失败时自动恢复备份；
-- 刷新 DNS 缓存。
-
-### 8. 静态 IP/DNS（可选）
-
-询问：
+安装器在首次修改 hosts 前保存：
 
 ```text
-Change the local static IPv4 address / DNS now? [y/N]:
+/var/backups/github520/hosts.original
 ```
 
-选 `y` 后会显示当前接口、地址、网关，并询问：
+- 只在文件不存在时创建，不会被后续安装覆盖；
+- `--uninstall-completely` 会优先恢复它；
+- 如果没有 original，则使用最近的时间戳备份；
+- 如果都没有，则直接从当前 hosts 删除 GitHub520 块。
 
-- 静态 IPv4（CIDR，例如 `192.168.1.50/24`）
-- DNS1
-- DNS2（可留空）
+### 时间戳备份
 
-然后再次确认并应用。具体后端见下文。
+每次 hosts 内容变化前创建：
 
-### 9. timer/service
+```text
+/var/backups/github520/hosts.<YYYYmmdd-HHMMSS>.<pid>
+```
 
-安装并启用：
-
-- `/etc/systemd/system/github520-update.service`
-- `/etc/systemd/system/github520-update.timer`
-
-### 10. 收尾
-
-清理临时目录，输出仓库地址、作者、timer 和日志命令，并附猫娘风格结束语。
+默认保留最近 24 份；`hosts.original` 不计入轮转。
 
 ## Btrfs 与 snapper 快照
 
-当根文件系统是 Btrfs，且 `snapper` 已安装并有配置时：
-
-1. 执行 `snapper list-configs`；
-2. 执行 `btrfs subvolume list /`；
-3. 显示前 20 个子卷；
-4. 提供 30 秒倒计时菜单：
+当根文件系统是 Btrfs，且 snapper 有配置时：
 
 ```text
 1) Snapshot all snapper configs
@@ -207,84 +215,43 @@ Change the local static IPv4 address / DNS now? [y/N]:
 3) Do not snapshot (abort deployment)
 ```
 
-规则：
-
-- 30 秒内没有有效选择：超时退出；
-- 出现任何 snapper/btrfs 错误：退出；
-- 选择 3：按设计中止部署；
-- 非 Btrfs、未安装 snapper 或没有 snapper 配置：自动跳过；
-- 快照创建发生在写 hosts 和改网络之前。
+- 30 秒倒计时；
+- 超时、snapper/btrfs 错误或选择 3 都会中止；
+- 非 Btrfs 或没有 snapper 配置会自动跳过；
+- 快照发生在写 hosts 和修改网络之前。
 
 ## 网络检测与静态 IP/DNS
 
-### 检测顺序
+检测顺序：
 
 1. **NetworkManager（优先）**
 2. systemd-networkd
 3. ifupdown
-4. dhcpcd / ConnMan / iwd / netctl（只检测，静态配置不直接使用）
+4. dhcpcd / ConnMan / iwd / netctl（只检测）
 
-静态配置后端选择：
+静态配置后端：
 
-- NetworkManager：有 active 连接时使用 `nmcli`；
-- systemd-networkd：服务 active 时写 `/etc/systemd/network/99-github520-<iface>.network`；
-- ifupdown：`/etc/network/interfaces` 或 `interfaces.d` 中含目标接口时改写 stanza；
-- 都不支持：报错退出。
+- NetworkManager：`nmcli connection modify` 设置 manual、地址、网关、DNS；
+- systemd-networkd：写入 `/etc/systemd/network/99-github520-<iface>.network`；
+- ifupdown：重写目标接口 stanza；
+- 没有可用后端：报错退出。
 
-### NetworkManager
+静态修改会保存旧配置，并在验证失败时尝试回滚。
 
-```bash
-nmcli connection modify <uuid> \
-  ipv4.method manual \
-  ipv4.addresses 192.168.1.50/24 \
-  ipv4.gateway 192.168.1.1 \
-  ipv4.dns 1.1.1.1,8.8.8.8 \
-  ipv4.ignore-auto-dns yes
-nmcli connection up <uuid>
-```
+### 风险
 
-修改前会保存旧字段，验证失败时尝试恢复。
-
-### systemd-networkd
-
-写入 99 优先级的 `.network` 文件，包含：
-
-```ini
-[Match]
-Name=eth0
-
-[Network]
-DHCP=no
-Address=192.168.1.50/24
-Gateway=192.168.1.1
-DNS=1.1.1.1
-```
-
-然后执行 `networkctl reload` 和 `networkctl reconfigure <iface>`。
-
-### ifupdown
-
-重写目标接口的 stanza。注意：**这可能丢失 MTU、bridge、bond、VLAN、pre-up 等额外选项**。复杂网络环境建议手动修改，或在快照中操作。
-
-### DNS
-
-按顺序尝试：
-
-1. systemd-resolved：`resolvectl dns <iface> ...`；
-2. `resolvconf`；
-3. 直接写 `/etc/resolv.conf`（如果是符号链接则拒绝覆盖）。
-
-修改静态 IP 或重启网络接口可能中断 SSH，请优先使用本地控制台或云控制台。
+- 修改 IP 或重启网络可能中断 SSH；
+- ifupdown 复杂配置（MTU、bridge、bond、VLAN、pre-up 等）可能丢失；
+- `/etc/resolv.conf` 是符号链接时不会直接覆盖；
+- 优先使用本地控制台或云控制台操作。
 
 ## systemd timer 与 service
 
-安装后会复制脚本到：
+安装路径：
 
 ```text
-/usr/local/bin/github520-arch.sh
+/usr/local/bin/github520-arch
 ```
-
-> 注意大小写：仓库文件是 `Github520-Arch.sh`，安装后的固定路径是小写 `github520-arch.sh`。
 
 Service：
 
@@ -297,7 +264,7 @@ Service：
 ```ini
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/github520-arch.sh --update
+ExecStart=/usr/local/bin/github520-arch --update --systemd
 ```
 
 Timer：
@@ -305,8 +272,6 @@ Timer：
 ```text
 /etc/systemd/system/github520-update.timer
 ```
-
-核心配置：
 
 ```ini
 [Timer]
@@ -320,12 +285,11 @@ Unit=github520-update.service
 
 行为：
 
-- 安装完成后立即更新一次 hosts；
-- 开机 5 分钟后第一次 timer 运行；
+- 安装完成后立即执行一次 hosts 更新；
+- 开机 5 分钟后首次 timer 运行；
 - 之后每小时运行一次；
-- 每次运行调用 `--update`，非交互更新 hosts；
-- 更新成功或失败写入日志；
-- 更新模式不会创建快照、不会修改网络、不会重新安装 timer。
+- 更新成功/失败写入日志；
+- 更新模式不创建快照、不改网络、不重装 timer。
 
 常用命令：
 
@@ -337,12 +301,6 @@ journalctl -u github520-update.service
 tail -f /var/log/github520/update.log
 ```
 
-手动执行一次更新：
-
-```bash
-sudo /usr/local/bin/github520-arch.sh --update
-```
-
 ## 日志与备份
 
 ### 更新日志
@@ -351,29 +309,21 @@ sudo /usr/local/bin/github520-arch.sh --update
 /var/log/github520/update.log
 ```
 
-每次运行会写入：
+包含：
 
-- 开始时间；
+- 开始/结束时间；
 - 使用的源；
-- 下载/校验结果；
-- hosts 是否变化；
 - 成功或失败；
-- 失败原因。
+- 失败原因；
+- 手动更新的摘要。
 
-日志超过 1 MiB 时会轮转为 `update.log.1`。
+超过 1 MiB 时轮转为 `update.log.1`。
 
 ### hosts 备份
 
 ```text
-/var/backups/github520/hosts.<YYYYmmdd-HHMMSS>.<pid>
-```
-
-默认保留最近 24 份。只有 hosts 内容发生变化时才创建新备份。
-
-手动恢复：
-
-```bash
-sudo cp /var/backups/github520/hosts.20260101-120000.1234 /etc/hosts
+/var/backups/github520/hosts.original
+/var/backups/github520/hosts.<时间>.<pid>
 ```
 
 ### 网络备份
@@ -382,107 +332,110 @@ sudo cp /var/backups/github520/hosts.20260101-120000.1234 /etc/hosts
 /var/backups/github520/net-<时间>.<pid>/
 ```
 
-包含 NetworkManager 旧字段、networkd/ifupdown 配置文件、resolv.conf 备份（如果直接修改过）。
-
 ### 临时文件
 
-安装/更新使用的 `mktemp` 目录会在退出时自动删除。
+安装/更新使用的 `mktemp` 目录会在退出或安装结束时删除。
 
-## 更新、卸载与还原
+## 卸载
 
-### 更新脚本
-
-如果修改了仓库中的 `Github520-Arch.sh`，重新运行安装器即可覆盖 `/usr/local/bin/github520-arch.sh` 并重启 timer：
+### 保留数据卸载
 
 ```bash
-sudo ./Github520-Arch.sh
+sudo github520-arch --uninstall
 ```
 
-### 卸载 timer/service
+会：
+
+- 停止并禁用 `github520-update.timer`；
+- 删除 service/timer unit；
+- 删除 `/usr/local/bin/github520-arch` 和兼容入口；
+- **保留** `/etc/hosts`、日志、备份。
+
+适合以后还要重新安装，或想手动检查残留配置的情况。
+
+### 完全卸载
 
 ```bash
-sudo systemctl disable --now github520-update.timer
-sudo rm -f /etc/systemd/system/github520-update.timer
-sudo rm -f /etc/systemd/system/github520-update.service
-sudo systemctl daemon-reload
-sudo rm -f /usr/local/bin/github520-arch.sh
+sudo github520-arch --uninstall-completely
 ```
 
-### 还原 hosts
+会：
+
+1. 停止并删除 systemd units；
+2. 恢复 `hosts.original`（不存在则用最近备份）；
+3. 从恢复后的 hosts 中移除 GitHub520 块；
+4. 删除 CLI、兼容入口；
+5. 删除 `/var/log/github520`；
+6. 删除 `/var/backups/github520`；
+7. 删除 `/etc/hosts.github520-backup.*` 旧备份；
+8. 清理 `/tmp/github520-arch*` 等临时文件。
+
+完整卸载会要求确认；自动化可加 `--force`：
 
 ```bash
-sudo cp /var/backups/github520/hosts.<时间>.<pid> /etc/hosts
+sudo github520-arch --uninstall-completely --force
 ```
 
-或者只删除 GitHub520 块：
-
-```bash
-sudo sed -i '/# GitHub520 Host Start/,/# GitHub520 Host End/d' /etc/hosts
-```
-
-日志和备份目录可按需删除：
-
-```bash
-sudo rm -rf /var/log/github520 /var/backups/github520
-```
+> 完整卸载会恢复**首次安装前**的 hosts，因此安装后手动添加的其他 hosts 修改也可能丢失。
+>
+> 如需保留安装后的手动修改，请使用 `--uninstall`，或先手动备份当前 `/etc/hosts`。
 
 ## 安全说明
 
-- 脚本以 root 权限修改 `/etc/hosts`，可能修改网络配置并安装 systemd unit。
-- hosts 内容来自 GitHub520 及第三方 CDN/镜像；脚本校验结构和条目数量，但**没有域名白名单**。镜像被劫持时可能写入恶意解析记录。高安全环境请只使用官方源或自行增加白名单。
-- 脚本不会安装软件包，不会修改防火墙或 SSH 配置。
-- timer 以 root 执行本地脚本；请确保 `/usr/local/bin/github520-arch.sh` 权限为 `0755` 且不可被普通用户篡改。
-- Beta 版本请先在测试机或快照中验证。
-- 本项目不是 GitHub520 官方项目。
+- 安装器以 root 修改 hosts、网络配置并安装 systemd unit。
+- hosts 内容来自 GitHub520 及第三方 CDN/镜像；脚本校验结构和条目数量，但**没有域名白名单**。镜像被劫持时可能写入恶意解析记录。
+- Timer 以 root 执行本地脚本；确保 `/usr/local/bin/github520-arch` 归 root 所有且不可被普通用户写入。
+- 脚本不会安装软件包、修改防火墙或 SSH 配置。
+- 这是 **v0.1 beta**，请保留快照和备份。
 
 ## 常见问题 Q&A
 
-### Q1: 为什么提示只支持 Arch Linux？
+### Q1: 为什么 `sudo github520-arch` 显示状态而不是安装？
 
-脚本会读取 `/etc/os-release` 的 `ID`，只有 `ID=arch` 才继续。Manjaro、EndeavourOS、Garuda 等 Arch 衍生版目前也会被拒绝。
-
-### Q2: 在 Arch WSL 或容器里能运行吗？
-
-理论上 `ID=arch` 会通过，但脚本需要 systemd 且在 `/run/systemd/system` 存在。大多数 WSL/容器默认不满足，会在 systemd 检查处退出。请勿在隔离环境中修改宿主机的网络配置。
-
-### Q3: 没有 sudo 怎么办？
-
-使用 root 登录，或让管理员把账号加入 sudoers。脚本没有 sudo 时会输出访问拒绝并退出。
-
-### Q4: 快照菜单超时了？
-
-这是设计行为：30 秒内没有有效选择会中止。重新运行并选择 1 或 2；不需要快照时选择 3 会主动中止安装。
-
-### Q5: 所有 GitHub520 源都失败？
-
-脚本会在写 hosts 前退出，不修改现有配置。请检查：
-
-- 网络和 DNS；
-- 是否能访问 `https://raw.hellogithub.com/hosts`；
-- 代理/防火墙/TLS 拦截；
-- 系统时间是否正确。
-
-### Q6: hosts 写入失败或提示 immutable？
-
-检查：
+这是设计行为。无参数只显示状态和帮助提示，避免误重装。安装使用：
 
 ```bash
-lsattr /etc/hosts
+sudo github520-arch install
 ```
 
-如果有 `i` 属性：
+### Q2: `sudo github520-arch` 提示 command not found？
+
+先确认 CLI 是否存在：
 
 ```bash
-sudo chattr -i /etc/hosts
+ls -l /usr/local/bin/github520-arch
 ```
 
-修改完成后可以按需加回。
+如果存在但 sudo 找不到，使用完整路径：
 
-### Q7: 为什么安装后 /etc/hosts 没变化？
+```bash
+sudo /usr/local/bin/github520-arch status
+```
 
-可能已经是相同内容。脚本会检测 `cmp`，如果 hosts 已是最新，会显示 `Hosts already up to date`，不会重复备份或写入。
+脚本不会修改 `/etc/profile` 或 `.bashrc`；`/usr/local/bin` 是标准 PATH 目录。部分自定义 sudoers 的 `secure_path` 可能不包含它。
 
-### Q8: timer 没有运行？
+### Q3: 如何立即刷新 hosts，不等下一次 timer？
+
+```bash
+sudo github520-arch update
+```
+
+成功/失败会显示在终端，并追加到更新日志。
+
+### Q4: 如何查看日志？
+
+```bash
+sudo github520-arch logs
+sudo github520-arch logs -f
+```
+
+或：
+
+```bash
+tail -f /var/log/github520/update.log
+```
+
+### Q5: timer 没有运行？
 
 检查：
 
@@ -496,149 +449,202 @@ journalctl -u github520-update.service
 常见原因：
 
 - systemd 不是 PID 1；
-- timer 被手动 disable；
-- 脚本路径 `/usr/local/bin/github520-arch.sh` 被删除；
-- unit 文件被修改但未 `daemon-reload`。
+- timer 被 disable；
+- `/usr/local/bin/github520-arch` 被删除；
+- unit 修改后未 `daemon-reload`。
 
-### Q9: 如何立即测试自动更新？
+### Q6: 如何重新安装/更新脚本？
 
-```bash
-sudo systemctl start github520-update.service
-tail -n 50 /var/log/github520/update.log
-```
-
-### Q10: 自动更新会改网络吗？
-
-不会。`--update` 只更新 hosts 和刷新 DNS 缓存，不创建快照、不修改静态 IP/DNS，也不会重装 timer。
-
-### Q11: 静态 IP 修改后 SSH 断开了？
-
-脚本会二次确认，但无法保证远程连接不中断。请使用本地/云控制台登录，然后：
-
-1. 查看 `/var/backups/github520/net-*`；
-2. 恢复旧配置；
-3. 重启 NetworkManager、systemd-networkd 或 ifupdown；
-4. 或恢复快照。
-
-### Q12: 为什么优先使用 NetworkManager？
-
-Arch 桌面和很多服务器使用 NetworkManager。脚本会优先检查 `nmcli` 和 active 连接；没有可用 NM 连接时才回退到 systemd-networkd/ifupdown。
-
-### Q13: DNS 修改没生效？
-
-检查：
+如果修改了仓库中的脚本，重新运行仓库安装器：
 
 ```bash
-resolvectl dns
-cat /etc/resolv.conf
+sudo ./Github520-Arch.sh install
 ```
 
-可能原因：
+`sudo github520-arch reinstall` 只会使用**已安装的 CLI**重新部署，不会从网络拉取新版本。
 
-- systemd-resolved 未启用；
-- `/etc/resolv.conf` 是符号链接，脚本拒绝覆盖；
-- 其他网络配置优先级更高；
-- 修改后未重新激活连接。
+### Q7: `--uninstall` 和 `--uninstall-completely` 有什么区别？
 
-### Q14: ifupdown 的 bridge/bond/VLAN 会保留吗？
+- `--uninstall`：删除 CLI 和 systemd unit，保留 hosts、日志、备份；
+- `--uninstall-completely`：恢复原始 hosts，并删除 CLI、unit、日志、备份和临时文件。
 
-`--static-ip` 对应的 ifupdown 逻辑会重写目标 stanza，可能丢失 MTU、bridge、bond、VLAN、pre-up 等选项。复杂网络请手动修改，或先做快照/备份。
+### Q8: 完整卸载会恢复什么 hosts？
 
-### Q15: 如何卸载？
+优先恢复：
+
+```text
+/var/backups/github520/hosts.original
+```
+
+这是首次安装前保存的原始 hosts。若不存在，则使用最近的时间戳备份。若都没有，则直接从当前 hosts 删除 GitHub520 块。
+
+### Q9: 安装后手动改过 hosts，完整卸载会保留吗？
+
+不会。完整卸载以原始 hosts 为基准，安装后的手动修改可能丢失。请先手动备份当前 `/etc/hosts`，或使用 `--uninstall` 保留 hosts。
+
+### Q10: 为什么提示只支持 Arch Linux？
+
+脚本检查 `/etc/os-release` 的 `ID=arch`。Manjaro、EndeavourOS 等 Arch 衍生版会被拒绝。
+
+### Q11: Arch WSL/容器能用吗？
+
+需要 systemd 和 `/run/systemd/system`。大多数 WSL/容器不满足，会在检查阶段退出。不要在隔离环境中修改宿主机网络。
+
+### Q12: 快照菜单超时了？
+
+30 秒内必须选择 1 或 2；选择 3 会主动中止。重新运行并尽快选择。
+
+### Q13: 所有 GitHub520 源都失败？
+
+脚本会在修改 hosts 前退出。检查网络、DNS、代理、防火墙、TLS 拦截和系统时间。
+
+### Q14: 静态 IP 修改后 SSH 断线？
+
+使用本地/云控制台登录，查看 `/var/backups/github520/net-*`，恢复配置并重启 NetworkManager/systemd-networkd/ifupdown，或恢复快照。
+
+### Q15: 如何恢复 hosts 备份？
 
 ```bash
-sudo systemctl disable --now github520-update.timer
-sudo rm -f /etc/systemd/system/github520-update.timer
-sudo rm -f /etc/systemd/system/github520-update.service
-sudo systemctl daemon-reload
-sudo rm -f /usr/local/bin/github520-arch.sh
+sudo github520-arch restore
+sudo github520-arch restore original
+sudo github520-arch restore /var/backups/github520/hosts.20260101-120000.1234
 ```
-
-然后用备份还原 `/etc/hosts`。
 
 ### Q16: 这是正式版吗？
 
-不是。当前是 **v0.1 beta**。欢迎反馈问题，但请勿在未备份的生产环境直接使用。
+不是。当前是 **v0.1 beta**，请先备份并反馈问题。
 
 ---
 
 # English
 
-GitHub520 hosts installer for **Arch Linux** (Beta).
+GitHub520 hosts manager for **Arch Linux** (Beta).
 
 - Version: **v0.1 (beta)**
 - Author: **白丝小猫娘 (WS-CatGirl)**
-- New script: [Github520-Arch.sh](Github520-Arch.sh)
+- Source: [Github520-Arch.sh](Github520-Arch.sh)
 - Legacy generic script: [github520-deploy.sh](github520-deploy.sh)
 
-> This is not an official GitHub520 project. Hosts content comes from GitHub520 and its mirrors.
->
-> Beta software. Keep backups and test on a non-critical machine first.
+> This is not an official GitHub520 project. Beta software: keep backups and test before production use.
 
 ## Features
 
-- Catgirl-style welcome screen with version **v0.1 beta**.
-- **Arch Linux only** (`ID=arch` in `/etc/os-release`). Manjaro, EndeavourOS and other Arch derivatives are rejected.
-- Root/sudo handling:
-  - root runs directly;
-  - a normal user with sudo is re-executed through sudo;
-  - missing sudo or failed authentication produces an access-denied message.
+- Installs an extensionless executable CLI at `/usr/local/bin/github520-arch`.
+- Run it from any directory, including `/home`, with `sudo github520-arch`.
+- No arguments show status and a short help hint instead of reinstalling.
+- Immediate manual refresh, status, logs, restore, reinstall and uninstall.
+- NetworkManager first, then systemd-networkd/ifupdown.
 - Optional Btrfs/snapper snapshot with a 30-second countdown.
-- Detects **NetworkManager first**, then systemd-networkd, ifupdown, dhcpcd, ConnMan, iwd and netctl.
-- Multiple GitHub520 sources with automatic fallback.
-- Backs up `/etc/hosts` before writing and restores it on failure.
-- Optional static IPv4, gateway and DNS configuration.
-- Installs a systemd service + hourly timer for automatic updates.
-- Writes success/failure details to `/var/log/github520/update.log`.
-- Bilingual/catgirl-style welcome and final summary; runtime messages remain readable in a TTY.
+- Multiple GitHub520 sources with fallback.
+- Hourly systemd timer.
+- Update success/failure logged to `/var/log/github520/update.log`.
+- Original `/etc/hosts` saved before the first modification.
+- Catgirl-style welcome and final message.
 
 ## Requirements
 
 - Arch Linux (`ID=arch`)
 - systemd
 - bash 4+
-- `curl`, `ip` (iproute2), `findmnt`, `awk`, `sed`, `grep`, `mktemp`, `install`
+- `curl`, `ip`, `findmnt`, `awk`, `sed`, `grep`, `mktemp`, `install`
 - Optional: Btrfs + snapper + btrfs-progs
-- Optional: NetworkManager (recommended), systemd-networkd, ifupdown
-- Optional: systemd-resolved, resolvconf, nscd or dnsmasq for DNS handling
+- Optional: NetworkManager, systemd-networkd, ifupdown
+- Optional: systemd-resolved, resolvconf, nscd or dnsmasq
 
-## Quick start
+## Install
 
 ```bash
 git clone https://github.com/WS-CatGirl/github520-deploy.git
 cd github520-deploy
 
 chmod +x Github520-Arch.sh
-sudo ./Github520-Arch.sh
+sudo ./Github520-Arch.sh install
 ```
 
-Help and version:
+The installer:
+
+1. shows the welcome screen;
+2. checks root/sudo;
+3. checks Arch Linux;
+4. optionally creates a snapshot;
+5. detects the network backend;
+6. downloads and updates `/etc/hosts`;
+7. optionally configures static IPv4/DNS;
+8. installs `/usr/local/bin/github520-arch`;
+9. installs and enables `github520-update.timer`;
+10. cleans temporary files and prints a summary.
+
+Running without `install` only shows status/help; it does not install.
+
+## PATH
+
+The CLI is installed at:
+
+```text
+/usr/local/bin/github520-arch
+```
+
+`/usr/local/bin` is a standard PATH directory and is normally included in sudo's `secure_path`, so this works from any directory:
 
 ```bash
-./Github520-Arch.sh --help
-./Github520-Arch.sh --version
+cd /home
+sudo github520-arch status
 ```
 
-## Options
+If your sudo configuration does not include it:
 
-| Option | Description |
+```bash
+sudo /usr/local/bin/github520-arch status
+```
+
+The script does **not** modify `/etc/profile` or `.bashrc`.
+
+A compatibility symlink is created:
+
+```text
+/usr/local/bin/github520-arch.sh -> /usr/local/bin/github520-arch
+```
+
+## Commands
+
+| Command | Description |
 |---|---|
-| `-h`, `--help` | Show help and exit. No root required. |
-| `-V`, `--version` | Show version and exit. |
-| `--update` | Internal non-interactive mode used by the systemd timer. Updates hosts, writes the log and exits. |
+| `sudo github520-arch` | Show status and a short help hint |
+| `sudo github520-arch install` | Interactive install / redeploy |
+| `sudo github520-arch reinstall` | Re-run the installer using the installed CLI |
+| `sudo github520-arch update` | Immediately refresh hosts |
+| `sudo github520-arch refresh` | Alias for update |
+| `sudo github520-arch status` | Show version, hosts entries, timer, last log, backups |
+| `sudo github520-arch logs` | Show update log |
+| `sudo github520-arch logs -f` | Follow update log |
+| `sudo github520-arch restore` | Restore the latest hosts backup |
+| `sudo github520-arch restore original` | Restore the pre-install hosts |
+| `sudo github520-arch restore FILE` | Restore a specific backup |
+| `sudo github520-arch --uninstall` | Remove CLI/units, keep hosts/logs/backups |
+| `sudo github520-arch --uninstall-completely` | Restore hosts and remove all data |
+| `sudo github520-arch --uninstall-completely --force` | Skip the complete-uninstall confirmation |
+| `github520-arch version` | Show version |
+| `github520-arch help` | Show help |
+
+Internal timer mode:
+
+```bash
+/usr/local/bin/github520-arch --update --systemd
+```
 
 ## Install flow
 
 1. Welcome.
 2. Root/sudo check.
 3. Arch Linux check.
-4. Optional Btrfs/snapper snapshot.
-5. Network backend detection (NetworkManager first).
-6. GitHub520 source check and download.
-7. Backup and update `/etc/hosts`.
-8. Optional static IPv4/DNS configuration.
-9. Install and enable `github520-update.timer`.
-10. Cleanup and final summary.
+4. Save original `/etc/hosts` (first install only).
+5. Optional Btrfs/snapper snapshot.
+6. Network backend detection (NetworkManager first).
+7. GitHub520 source check and download.
+8. Update `/etc/hosts`.
+9. Optional static IPv4/DNS.
+10. Install CLI and hourly timer.
+11. Cleanup and summary.
 
 ## Snapshots
 
@@ -650,7 +656,7 @@ On Btrfs with snapper:
 3) Do not snapshot (abort deployment)
 ```
 
-A timeout, snapper error or option 3 aborts the deployment. Non-Btrfs systems and systems without snapper configs skip this step.
+Timeout, snapper error or option 3 aborts. Non-Btrfs systems and systems without snapper configs skip this step.
 
 ## Network configuration
 
@@ -660,32 +666,34 @@ Priority:
 2. systemd-networkd
 3. ifupdown
 
-Static configuration:
+Static configuration uses `nmcli`, systemd-networkd `.network` files, or an ifupdown stanza rewrite. DNS uses systemd-resolved, resolvconf, or a direct `/etc/resolv.conf` write (symlinks are not overwritten).
 
-- NetworkManager: `nmcli connection modify ...` + `connection up`;
-- systemd-networkd: writes `/etc/systemd/network/99-github520-<iface>.network` and reloads;
-- ifupdown: rewrites the target stanza. Complex options such as MTU/bridge/bond/VLAN may be lost.
-
-DNS is applied through systemd-resolved, resolvconf, or a direct `/etc/resolv.conf` write (symlinks are not overwritten).
-
-Changing the IP or restarting an interface may interrupt SSH. Use a local/out-of-band console.
+Changing the IP or restarting an interface can interrupt SSH. Use a local/out-of-band console. Complex ifupdown options such as MTU/bridge/bond/VLAN may be lost.
 
 ## systemd timer and service
 
-Installed script:
+Installed CLI:
 
 ```text
-/usr/local/bin/github520-arch.sh
+/usr/local/bin/github520-arch
 ```
 
-Unit files:
+Units:
 
 ```text
 /etc/systemd/system/github520-update.service
 /etc/systemd/system/github520-update.timer
 ```
 
-Timer schedule:
+Service:
+
+```ini
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/github520-arch --update --systemd
+```
+
+Timer:
 
 ```ini
 OnBootSec=5min
@@ -695,7 +703,7 @@ RandomizedDelaySec=30s
 Persistent=true
 ```
 
-Useful commands:
+Commands:
 
 ```bash
 systemctl status github520-update.timer
@@ -708,62 +716,80 @@ tail -f /var/log/github520/update.log
 ## Logs and backups
 
 - Update log: `/var/log/github520/update.log` (rotated at 1 MiB).
-- Hosts backups: `/var/backups/github520/hosts.<timestamp>.<pid>` (latest 24).
+- Original hosts: `/var/backups/github520/hosts.original`.
+- Timestamped backups: `/var/backups/github520/hosts.<timestamp>.<pid>` (latest 24).
 - Network backups: `/var/backups/github520/net-<timestamp>.<pid>/`.
-
-Restore hosts:
-
-```bash
-sudo cp /var/backups/github520/hosts.<timestamp>.<pid> /etc/hosts
-```
 
 ## Uninstall
 
+### Keep data
+
 ```bash
-sudo systemctl disable --now github520-update.timer
-sudo rm -f /etc/systemd/system/github520-update.timer
-sudo rm -f /etc/systemd/system/github520-update.service
-sudo systemctl daemon-reload
-sudo rm -f /usr/local/bin/github520-arch.sh
+sudo github520-arch --uninstall
 ```
 
-Restore `/etc/hosts` from the backup if needed.
+Removes the CLI and systemd units, but keeps `/etc/hosts`, logs and backups.
 
-## Security notes
+### Complete removal
 
-- The installer runs as root and modifies system files, network settings and systemd units.
-- Hosts content comes from third-party CDNs/mirrors. The script validates structure and entry count but does not enforce a domain allowlist. Use the official source or add your own allowlist for high-security environments.
-- The timer executes a local root-owned script. Ensure `/usr/local/bin/github520-arch.sh` remains root-owned and not writable by unprivileged users.
+```bash
+sudo github520-arch --uninstall-completely
+```
+
+Stops/removes units, restores `hosts.original` (or the latest backup), removes GitHub520 entries, deletes the CLI, logs, backups and temporary files.
+
+Use `--force` to skip confirmation:
+
+```bash
+sudo github520-arch --uninstall-completely --force
+```
+
+> Complete uninstall restores the hosts file from before the first installation. Manual hosts changes made after installation may be lost. Use `--uninstall` or back up the current `/etc/hosts` first.
+
+## Security
+
+- The installer runs as root and modifies hosts, network settings and systemd units.
+- Hosts content comes from GitHub520 and third-party CDNs/mirrors. Structure and entry count are validated, but no domain allowlist is enforced.
+- The timer executes a root-owned local script. Keep `/usr/local/bin/github520-arch` root-owned and non-writable by unprivileged users.
 - No packages, firewall rules or SSH configuration are modified.
-- This is a beta release.
+- Beta software: keep snapshots and backups.
 
 ## FAQ
 
-### 1. Why is only Arch Linux supported?
+### 1. Why does `sudo github520-arch` show status instead of installing?
 
-The script checks `ID=arch` in `/etc/os-release`. Arch derivatives currently fail this check.
+That is intentional to prevent accidental reinstallation. Use `sudo github520-arch install`.
 
-### 2. Does it work in Arch WSL/containers?
+### 2. `github520-arch: command not found`
 
-The systemd check (`/run/systemd/system`) usually fails in WSL/containers. Do not modify host networking from an isolated environment.
+Check:
 
-### 3. The snapshot menu timed out
+```bash
+ls -l /usr/local/bin/github520-arch
+```
 
-A valid selection is required within 30 seconds. Re-run and choose 1 or 2, or choose 3 to abort.
+If it exists but sudo cannot find it, use the full path:
 
-### 4. All sources failed
+```bash
+sudo /usr/local/bin/github520-arch status
+```
 
-The script exits before modifying hosts. Check network, DNS, proxy, firewall, TLS interception and system time.
+The script does not modify `/etc/profile` or `.bashrc`; some custom sudoers `secure_path` settings may exclude `/usr/local/bin`.
 
-### 5. `/etc/hosts` is immutable
+### 3. How do I refresh immediately?
 
-Check `lsattr /etc/hosts`; if the `i` attribute is set, run `sudo chattr -i /etc/hosts`.
+```bash
+sudo github520-arch update
+```
 
-### 6. Hosts did not change
+### 4. How do I view logs?
 
-The content may already be identical. The script skips backup/write and logs `Hosts already up to date`.
+```bash
+sudo github520-arch logs
+sudo github520-arch logs -f
+```
 
-### 7. The timer is not running
+### 5. The timer is not running
 
 Check:
 
@@ -773,32 +799,57 @@ systemctl list-timers github520-update.timer
 journalctl -u github520-update.service
 ```
 
-Also verify `/usr/local/bin/github520-arch.sh` exists and the unit files have not been edited without `daemon-reload`.
+### 6. How do I reinstall or update the script?
 
-### 8. Does the hourly update change networking?
+Run the repository installer:
 
-No. `--update` only updates hosts and flushes DNS caches. It does not create snapshots, change IP/DNS, or reinstall the timer.
+```bash
+sudo ./Github520-Arch.sh install
+```
 
-### 9. SSH disconnected after a static IP change
+`github520-arch reinstall` only redeploys the currently installed CLI; it does not download a new version.
 
-Use a local/cloud console, restore files from `/var/backups/github520/net-*`, restart the network backend, or restore a snapshot.
+### 7. Difference between `--uninstall` and `--uninstall-completely`
 
-### 10. Why NetworkManager first?
+- `--uninstall`: remove CLI/units; keep hosts, logs and backups.
+- `--uninstall-completely`: restore hosts and remove CLI/units/logs/backups/temp files.
 
-It is the most common network stack on Arch desktops/servers. The script uses an active `nmcli` connection first, then falls back to systemd-networkd/ifupdown.
+### 8. What hosts file is restored on complete uninstall?
 
-### 11. DNS did not change
+`/var/backups/github520/hosts.original` first; otherwise the latest timestamped backup; otherwise the GitHub520 block is removed from the current file.
 
-Check `resolvectl dns` and `/etc/resolv.conf`. `/etc/resolv.conf` symlinks are not overwritten; another backend may have higher priority.
+### 9. Will manual hosts changes survive complete uninstall?
 
-### 12. Will ifupdown bridge/bond/VLAN settings survive?
+No. Complete uninstall restores the pre-install hosts. Back up current `/etc/hosts` or use `--uninstall` if you need to keep manual changes.
 
-Static ifupdown configuration rewrites the stanza and may drop extra options. Use manual configuration or a snapshot for complex networking.
+### 10. Why only Arch Linux?
 
-### 13. How do I uninstall?
+The script checks `ID=arch` in `/etc/os-release`. Manjaro, EndeavourOS and other derivatives are rejected.
 
-Disable/remove the timer and service, remove `/usr/local/bin/github520-arch.sh`, then restore `/etc/hosts` from backup.
+### 11. Does it work in Arch WSL/containers?
 
-### 14. Is this stable?
+It requires systemd and `/run/systemd/system`; most WSL/container setups fail this check. Do not modify host networking from an isolated environment.
+
+### 12. Snapshot menu timed out
+
+Choose 1 or 2 within 30 seconds. Option 3 aborts.
+
+### 13. All sources failed
+
+The script exits before modifying hosts. Check network, DNS, proxy, firewall, TLS interception and system time.
+
+### 14. SSH disconnected after a static IP change
+
+Use a local/cloud console, restore from `/var/backups/github520/net-*`, restart the network backend, or restore a snapshot.
+
+### 15. How do I restore hosts?
+
+```bash
+sudo github520-arch restore
+sudo github520-arch restore original
+sudo github520-arch restore /var/backups/github520/hosts.20260101-120000.1234
+```
+
+### 16. Is this stable?
 
 No. This is **v0.1 beta**. Keep backups and report issues.
