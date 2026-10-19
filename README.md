@@ -21,7 +21,7 @@
 
 > 本项目不是 GitHub520 官方项目。hosts 内容来自 GitHub520 及其镜像源。
 >
-> 当前均为 **v0.1 beta**，请先备份并在测试机验证。
+> 当前均为 **v0.2 beta**，请先备份并在测试机验证。
 
 ---
 
@@ -309,7 +309,7 @@ GitHub520 源检测与下载
 
 ### 静态配置方式
 
-- ifupdown：重写目标 stanza；复杂选项（MTU、bridge、bond、VLAN、pre-up）可能丢失；
+- ifupdown：只重写目标 IPv4 stanza，`inet6` stanza 会保留；IPv4 的复杂选项（MTU、bridge、bond、VLAN、pre-up）可能丢失；
 - NetworkManager：`nmcli connection modify` + reactivate；
 - systemd-networkd：写 99 优先级 `.network` 文件并 reload。
 
@@ -319,6 +319,7 @@ GitHub520 源检测与下载
 
 - 修改 IP 或重启网络可能中断 SSH；
 - `/etc/resolv.conf` 是符号链接时不会直接覆盖；
+- 没有 IPv4 默认路由时会跳过静态网络配置，hosts 更新继续；
 - 优先使用本地控制台或云控制台。
 
 ## systemd timer 与 service
@@ -336,6 +337,7 @@ Timer 行为相同：
 - 开机 5 分钟后首次运行；
 - 之后每小时运行一次；
 - 更新成功/失败写入日志；
+- 手动更新与 timer 共用 `/run/github520-hosts.lock`，不会同时写 hosts；
 - 更新模式不创建快照、不改网络、不重装 timer。
 
 常用命令：
@@ -412,10 +414,11 @@ sudo github520-deploy --uninstall-completely --force
 
 - 安装器以 root 修改 hosts、网络配置并安装 systemd unit。
 - hosts 内容来自 GitHub520 及第三方 CDN/镜像；脚本校验结构和条目数量，但**没有域名白名单**。
+- 下载仅允许 HTTPS，并拒绝从 HTTPS 跳转到 HTTP。
 - Timer 以 root 执行本地脚本；确保 `/usr/local/bin/github520-arch` 或 `/usr/local/bin/github520-deploy` 归 root 所有且不可被普通用户写入。
 - 脚本不会安装软件包、修改防火墙或 SSH 配置。
 - 两个脚本的 timer 不应当同时启用。
-- 当前为 **v0.1 beta**，请保留快照和备份。
+- 当前为 **v0.2 beta**，请保留快照和备份。
 
 ## 常见问题 Q&A
 
@@ -514,7 +517,7 @@ sudo ./github520-deploy.sh install
 
 ### Q17: 这是正式版吗？
 
-不是。两个脚本均为 **v0.1 beta**，请先备份并反馈问题。
+不是。两个脚本均为 **v0.2 beta**，请先备份并反馈问题。
 
 ### Q18: 通用版提示 “Arch Linux detected” 怎么办？
 
@@ -549,7 +552,7 @@ Both provide:
 - status, logs, manual refresh, reinstall and uninstall
 - original hosts backup and complete-uninstall restore
 
-> This is not an official GitHub520 project. Both scripts are **v0.1 beta**.
+> This is not an official GitHub520 project. Both scripts are **v0.2 beta**.
 
 ## Which script?
 
@@ -698,7 +701,7 @@ Timeout, snapper error or option 3 aborts.
 - Generic: ifupdown → NetworkManager → systemd-networkd.
 - Arch: NetworkManager → systemd-networkd → ifupdown.
 
-Static changes back up the old configuration and attempt rollback on verification failure. Changing the IP or restarting an interface can interrupt SSH. Complex ifupdown options such as MTU/bridge/bond/VLAN may be lost.
+Static changes back up the old configuration and attempt rollback on verification failure. Changing the IP or restarting an interface can interrupt SSH. If no IPv4 default route exists, static network configuration is skipped and hosts updates continue. For ifupdown only the target IPv4 stanza is rewritten; `inet6` stanzas are preserved, but IPv4 options such as MTU/bridge/bond/VLAN may be lost.
 
 ## systemd
 
@@ -708,7 +711,7 @@ Static changes back up the old configuration and attempt rollback on verificatio
 | Timer | `github520-update.timer` | `github520-deploy-update.timer` |
 | Log | `/var/log/github520/update.log` | `/var/log/github520-deploy/update.log` |
 
-Timer behavior: first run 5 minutes after boot, then hourly. Update mode does not create snapshots, change networking or reinstall the timer.
+Timer behavior: first run 5 minutes after boot, then hourly. Manual updates and the timer share `/run/github520-hosts.lock`, so they never write `/etc/hosts` concurrently. Update mode does not create snapshots, change networking or reinstall the timer.
 
 ## Logs and backups
 
@@ -741,6 +744,7 @@ Complete uninstall restores the pre-install hosts, removes CLI/units, logs, back
 
 - Installers run as root and modify system files, networking and systemd units.
 - Hosts content comes from GitHub520 and third-party mirrors. Structure and entry count are validated, but no domain allowlist is enforced.
+- Downloads are HTTPS-only; redirects from HTTPS to HTTP are refused.
 - Keep the installed CLI root-owned and non-writable by unprivileged users.
 - Do not enable both timers on the same machine.
 - Beta software: keep snapshots and backups.
@@ -838,4 +842,4 @@ Then manage it with `sudo github520-arch ...`.
 
 ### 18. Is this stable?
 
-No. Both scripts are **v0.1 beta**. Keep backups and report issues.
+No. Both scripts are **v0.2 beta**. Keep backups and report issues.

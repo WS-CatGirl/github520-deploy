@@ -4,7 +4,7 @@
 #
 # GitHub520 hosts manager for Arch Linux.
 #
-# Version : v0.1-beta
+# Version : v0.2-beta
 # Author  : 白丝小猫娘 (WS-CatGirl)
 #
 # Repositories:
@@ -31,7 +31,7 @@ IFS=$'\n\t'
 umask 022
 export LC_ALL=C
 
-VERSION="v0.1"
+VERSION="v0.2"
 RELEASE_CHANNEL="beta"
 SCRIPT_NAME=${0##*/}
 SELF=""
@@ -47,6 +47,7 @@ SERVICE_NAME="github520-update.service"
 TIMER_NAME="github520-update.timer"
 SNAPSHOT_TIMEOUT=30
 MAX_HOSTS_BACKUPS=24
+LOCK_FILE="/run/github520-hosts.lock"
 
 COMMAND=""
 SYSTEMD_MODE=0
@@ -104,6 +105,8 @@ NETWORKD_OLD=""
 IFUPDOWN_SRC=""
 IFUPDOWN_OLD=""
 RESOLV_BACKUP=""
+DNS_VIA_RESOLVECTL=0
+DNS_VIA_RESOLVCONF=0
 
 if [ -t 1 ]; then
     C_RESET=$'\033[0m'
@@ -153,7 +156,9 @@ err() {
 
 die() {
     err "$*"
-    if [ "$UPDATE_MODE" -eq 1 ] || [ "$MANUAL_UPDATE" -eq 1 ]; then
+    # In systemd mode stdout/stderr already go to UPDATE_LOG; only manual
+    # updates need an explicit log entry.
+    if [ "$MANUAL_UPDATE" -eq 1 ] && [ "$UPDATE_MODE" -ne 1 ]; then
         append_update_log "[FAIL] ${*}"
     fi
     exit 1
@@ -425,10 +430,18 @@ detect_arch() {
         die "/etc/os-release is missing; cannot verify Arch Linux."
     fi
 
-    # shellcheck disable=SC1091
-    . /etc/os-release
-    os_id=${ID:-}
-    pretty=${PRETTY_NAME:-Arch Linux}
+    # Parse in a subshell: sourcing os-release in this shell would overwrite
+    # this script's VERSION and other global variables.
+    os_id=$(
+        # shellcheck disable=SC1091
+        . /etc/os-release 2>/dev/null || true
+        printf '%s' "${ID:-}"
+    )
+    pretty=$(
+        # shellcheck disable=SC1091
+        . /etc/os-release 2>/dev/null || true
+        printf '%s' "${PRETTY_NAME:-Arch Linux}"
+    )
 
     if [ "$os_id" != "arch" ]; then
         err "Unsupported distribution: $pretty (ID=${os_id:-unknown})."
@@ -680,7 +693,7 @@ detect_network_backends() {
     fi
 
     if [ "${#managers[@]}" -gt 0 ]; then
-        log "Network backends detected: ${managers[*]}"
+        log "Network backends detected: $(join_words "${managers[@]}")"
     else
         warn "No known network management backend was detected."
     fi
@@ -691,11 +704,14 @@ detect_default_route() {
     local route i
     local -a fields=()
 
-    if ! route=$(ip -4 route show default 2>/dev/null | head -n 1); then
-        die "Failed to read the IPv4 routing table."
+    if ! route=$(ip -4 route show default 2>/dev/null); then
+        warn "Failed to read the IPv4 routing table."
+        return 1
     fi
+    route=${route%%$'\n'*}
     if [ -z "$route" ]; then
-        die "No IPv4 default route is present."
+        warn "No IPv4 default route is present."
+        return 1
     fi
 
     IFS=' ' read -r -a fields <<< "$route"
@@ -707,7 +723,8 @@ detect_default_route() {
     done
 
     if [ -z "$IFACE" ]; then
-        die "Could not determine the default network interface."
+        warn "Could not determine the default network interface."
+        return 1
     fi
 
     CURRENT_CIDR=$(ip -o -4 addr show dev "$IFACE" scope global 2>/dev/null |
@@ -789,10 +806,34 @@ valid_ipv4() {
 }
 
 valid_ipv6() {
-    local ip=$1
+    local ip=$1 left right colons left_groups=0 right_groups=0
+
     [[ $ip == *:* ]] || return 1
     [[ $ip =~ ^[0-9A-Fa-f:]+$ ]] || return 1
-    return 0
+
+    if [[ $ip == *::* ]]; then
+        # At most one "::" is allowed.
+        [[ ${ip#*::} != *::* ]] || return 1
+
+        left=${ip%%::*}
+        right=${ip#*::}
+
+        if [ -n "$left" ]; then
+            [[ $left =~ ^[0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4})*$ ]] || return 1
+            colons=${left//[^:]/}
+            left_groups=$(( ${#colons} + 1 ))
+        fi
+        if [ -n "$right" ]; then
+            [[ $right =~ ^[0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4})*$ ]] || return 1
+            colons=${right//[^:]/}
+            right_groups=$(( ${#colons} + 1 ))
+        fi
+
+        [ $((left_groups + right_groups)) -le 7 ]
+        return
+    fi
+
+    [[ $ip =~ ^[0-9A-Fa-f]{1,4}(:[0-9A-Fa-f]{1,4}){7}$ ]]
 }
 
 valid_ip() {
@@ -842,7 +883,7 @@ collect_dns_servers() {
     def2=${cur_dns[1]:-}
 
     if [ -n "$def1" ]; then
-        printf 'Current DNS servers: %s\n' "${cur_dns[*]}"
+        printf 'Current DNS servers: %s\n' "$(join_words "${cur_dns[@]}")"
     fi
 
     read_dns_value dns1 "DNS server 1" "$def1"
@@ -917,6 +958,13 @@ join_dns_space() {
     printf '%s' "$out"
 }
 
+# IFS is newline/tab in this script, so "${array[*]}" would join with a
+# newline. Use this helper for one-line display.
+join_words() {
+    local IFS=' '
+    printf '%s' "$*"
+}
+
 create_network_backup_dir() {
     local stamp
     stamp=$(date '+%Y%m%d-%H%M%S')
@@ -959,18 +1007,14 @@ restore_networkmanager() {
     fi
 
     log "Restoring NetworkManager connection '$uuid'..."
-    if [ "$NM_OLD_METHOD" = "manual" ]; then
-        nmcli connection modify "$uuid" ipv4.method manual || return 1
-        nmcli connection modify "$uuid" \
-            ipv4.addresses "$NM_OLD_ADDR" \
-            ipv4.gateway "$NM_OLD_GATEWAY" \
-            ipv4.dns "$NM_OLD_DNS" || return 1
-    else
-        nmcli connection modify "$uuid" ipv4.method "$NM_OLD_METHOD" || return 1
-        nmcli connection modify "$uuid" ipv4.addresses "" ipv4.gateway "" || return 1
-        nmcli connection modify "$uuid" ipv4.dns "$NM_OLD_DNS" || return 1
-    fi
-    nmcli connection modify "$uuid" ipv4.ignore-auto-dns "${NM_OLD_IGNORE_DNS:-no}" || return 1
+    # Restore every saved field, including addresses/gateway that may have
+    # existed while the connection was still in automatic mode.
+    nmcli connection modify "$uuid" \
+        ipv4.method "$NM_OLD_METHOD" \
+        ipv4.addresses "$NM_OLD_ADDR" \
+        ipv4.gateway "$NM_OLD_GATEWAY" \
+        ipv4.dns "$NM_OLD_DNS" \
+        ipv4.ignore-auto-dns "${NM_OLD_IGNORE_DNS:-no}" || return 1
     nmcli connection up "$uuid" || return 1
 }
 
@@ -1090,11 +1134,10 @@ apply_ifupdown() {
                     next
                 }
             }
-            if ($0 ~ /^[[:space:]]*iface[[:space:]]+/ && $2 == iface) {
+            # Only replace the IPv4 stanza; keep any inet6 stanza intact.
+            if ($0 ~ /^[[:space:]]*iface[[:space:]]+/ && $2 == iface &&
+                ($3 == "inet" || $3 == "")) {
                 skip = 1
-                next
-            }
-            if ($0 ~ /^[[:space:]]*(auto|allow-hotplug|allow-auto)[[:space:]]+/ && $2 == iface) {
                 next
             }
             print
@@ -1104,7 +1147,14 @@ apply_ifupdown() {
     {
         cat "$base"
         printf '\n'
-        printf 'auto %s\n' "$IFACE"
+        if ! awk -v i="$IFACE" '
+            $1 == "auto" || $1 == "allow-auto" || $1 == "allow-hotplug" {
+                for (n = 2; n <= NF; n++) if ($n == i) found = 1
+            }
+            END { exit(found ? 0 : 1) }
+        ' "$base"; then
+            printf 'auto %s\n' "$IFACE"
+        fi
         printf 'iface %s inet static\n' "$IFACE"
         printf '    address %s\n' "$STATIC_ADDR"
         printf '    netmask %s\n' "$netmask"
@@ -1166,17 +1216,25 @@ apply_dns_settings() {
 
     if command -v resolvectl >/dev/null 2>&1 &&
        systemctl is-active --quiet systemd-resolved 2>/dev/null; then
-        resolvectl dns "$IFACE" "${DNS_SERVERS[@]}" || warn "resolvectl could not set DNS."
+        if resolvectl dns "$IFACE" "${DNS_SERVERS[@]}"; then
+            DNS_VIA_RESOLVECTL=1
+        else
+            warn "resolvectl could not set DNS."
+        fi
         resolvectl flush-caches >/dev/null 2>&1 || true
         return 0
     fi
 
     if command -v resolvconf >/dev/null 2>&1; then
-        {
+        if {
             for d in "${DNS_SERVERS[@]}"; do
                 printf 'nameserver %s\n' "$d"
             done
-        } | resolvconf -a "github520-$IFACE" || warn "resolvconf could not apply DNS."
+        } | resolvconf -a "github520-$IFACE"; then
+            DNS_VIA_RESOLVCONF=1
+        else
+            warn "resolvconf could not apply DNS."
+        fi
         return 0
     fi
 
@@ -1186,8 +1244,15 @@ apply_dns_settings() {
 rollback_network_config() {
     local rc=0
 
-    if [ -n "$IFACE" ] && command -v resolvectl >/dev/null 2>&1; then
+    if [ "$DNS_VIA_RESOLVECTL" -eq 1 ] && [ -n "$IFACE" ] &&
+       command -v resolvectl >/dev/null 2>&1; then
         resolvectl revert "$IFACE" >/dev/null 2>&1 || true
+        DNS_VIA_RESOLVECTL=0
+    fi
+
+    if [ "$DNS_VIA_RESOLVCONF" -eq 1 ] && command -v resolvconf >/dev/null 2>&1; then
+        resolvconf -d "github520-$IFACE" >/dev/null 2>&1 || true
+        DNS_VIA_RESOLVCONF=0
     fi
 
     case "$BACKEND" in
@@ -1243,8 +1308,8 @@ configure_static_network() {
     local ip_input="" pfx=24
 
     require_tty
+    [ -n "$IFACE" ] || die "No default IPv4 interface; cannot configure static networking."
     select_config_backend
-    create_network_backup_dir
 
     while [ -z "$GATEWAY" ] || ! valid_ipv4 "$GATEWAY"; do
         prompt_read GATEWAY "Gateway IPv4 address: "
@@ -1293,13 +1358,14 @@ configure_static_network() {
     printf '  Address   : %s\n' "$STATIC_CIDR"
     printf '  Gateway   : %s\n' "$GATEWAY"
     if [ "${#DNS_SERVERS[@]}" -gt 0 ]; then
-        printf '  DNS       : %s\n' "${DNS_SERVERS[*]}"
+        printf '  DNS       : %s\n' "$(join_words "${DNS_SERVERS[@]}")"
     fi
     if ! confirm_action "Apply this static network configuration?"; then
         log "Network configuration cancelled."
         return 0
     fi
 
+    create_network_backup_dir
     NETWORK_ROLLBACK_PENDING=1
 
     case "$BACKEND" in
@@ -1336,6 +1402,11 @@ confirm_action() {
 ask_network_change() {
     local answer=""
 
+    if [ -z "$IFACE" ]; then
+        log "No default IPv4 interface; skipping static network configuration."
+        return 0
+    fi
+
     printf '\n'
     prompt_read answer "Change the local static IPv4 address / DNS now? [y/N]: "
     case "$answer" in
@@ -1351,37 +1422,39 @@ ask_network_change() {
 # -----------------------------------------------------------------------------
 # GitHub520 sources, hosts update
 # -----------------------------------------------------------------------------
-check_github520() {
-    local url code reachable=0
+acquire_update_lock() {
+    local lock=$LOCK_FILE
 
-    command -v curl >/dev/null 2>&1 || die "curl is required."
+    [ -d /run ] || lock="${TMPDIR:-/tmp}/github520-hosts.lock"
+    command -v flock >/dev/null 2>&1 || return 0
 
-    log "Checking GitHub520 availability..."
-    log "Upstream: $GITHUB520_REPO_URL"
-
-    for url in "${HOSTS_SOURCES[@]}"; do
-        log "Probing source: $url"
-        code=""
-        if code=$(curl -fsSL --connect-timeout 6 --max-time 15 \
-            --retry 1 --retry-delay 1 -o /dev/null -w '%{http_code}' "$url" 2>/dev/null); then
-            if [ "$code" = "200" ]; then
-                ok "Source reachable: $url"
-                reachable=1
-                break
-            fi
-            warn "HTTP $code from $url"
-        else
-            warn "Request failed: $url"
-        fi
-    done
-
-    if [ "$reachable" -ne 1 ]; then
-        die "GitHub520 is unavailable from all configured sources."
+    if ! exec 9>"$lock"; then
+        warn "Could not open lock file $lock; continuing without locking."
+        return 0
+    fi
+    if ! flock -w 120 9; then
+        die "Another GitHub520 hosts update is still running."
     fi
 }
 
+release_update_lock() {
+    if command -v flock >/dev/null 2>&1; then
+        flock -u 9 >/dev/null 2>&1 || true
+    fi
+    exec 9>&- 2>/dev/null || true
+}
+
+prepare_github520_download() {
+    command -v curl >/dev/null 2>&1 || die "curl is required."
+
+    # fetch_hosts_block performs the real per-source probe and validation.
+    # A separate probe here would download every source twice.
+    log "Preparing GitHub520 download..."
+    log "Upstream: $GITHUB520_REPO_URL"
+}
+
 validate_hosts_block() {
-    local file=$1 start end entries
+    local file=$1 start end entries start_line end_line
 
     [ -s "$file" ] || { warn "Downloaded content is empty."; return 1; }
 
@@ -1390,6 +1463,15 @@ validate_hosts_block() {
 
     if [ "$start" -ne 1 ] || [ "$end" -ne 1 ]; then
         warn "Invalid GitHub520 block markers (start=$start end=$end)."
+        return 1
+    fi
+
+    start_line=$(grep -niE '^[[:space:]]*#[[:space:]]*github520[[:space:]]+host[[:space:]]+start' "$file" |
+        head -n 1 | cut -d: -f1 || true)
+    end_line=$(grep -niE '^[[:space:]]*#[[:space:]]*github520[[:space:]]+host[[:space:]]+end' "$file" |
+        head -n 1 | cut -d: -f1 || true)
+    if [ -n "$start_line" ] && [ -n "$end_line" ] && [ "$start_line" -ge "$end_line" ]; then
+        warn "Invalid GitHub520 block: end marker appears before start marker."
         return 1
     fi
 
@@ -1417,9 +1499,10 @@ fetch_hosts_block() {
         rm -f -- "$try"
         code=""
 
-        if ! code=$(curl -fsSL --connect-timeout 8 --max-time 25 \
+        if ! code=$(curl -fsSL --proto '=https' --proto-redir '=https' \
+            --connect-timeout 8 --max-time 25 \
             --retry 1 --retry-delay 1 -o "$try" -w '%{http_code}' "$url"); then
-            warn "Download failed; next source."
+            warn "Download failed${code:+ (HTTP $code)}; next source."
             continue
         fi
         if [ "$code" != "200" ]; then
@@ -1458,7 +1541,7 @@ count_github520_entries() {
         }
         in_block && $1 ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ { count++ }
         END { print count + 0 }
-    ' "$file"
+    ' "$file" 2>/dev/null || printf '0\n'
 }
 
 prune_hosts_backups() {
@@ -1507,11 +1590,21 @@ build_new_hosts() {
     local trimmed="$TMP_DIR/hosts.base.trim"
     local new="$TMP_DIR/hosts.new"
     local existing_start existing_end new_start new_end
+    local existing_start_line existing_end_line
 
     existing_start=$(grep -ciE '^[[:space:]]*#[[:space:]]*github520[[:space:]]+host[[:space:]]+start' "$HOSTS_FILE" || true)
     existing_end=$(grep -ciE '^[[:space:]]*#[[:space:]]*github520[[:space:]]+host[[:space:]]+end' "$HOSTS_FILE" || true)
     if [ "$existing_start" -ne "$existing_end" ]; then
         die "$HOSTS_FILE contains an unbalanced GitHub520 block."
+    fi
+
+    existing_start_line=$(grep -niE '^[[:space:]]*#[[:space:]]*github520[[:space:]]+host[[:space:]]+start' "$HOSTS_FILE" |
+        head -n 1 | cut -d: -f1 || true)
+    existing_end_line=$(grep -niE '^[[:space:]]*#[[:space:]]*github520[[:space:]]+host[[:space:]]+end' "$HOSTS_FILE" |
+        head -n 1 | cut -d: -f1 || true)
+    if [ -n "$existing_start_line" ] && [ -n "$existing_end_line" ] &&
+       [ "$existing_start_line" -ge "$existing_end_line" ]; then
+        die "$HOSTS_FILE has its GitHub520 end marker before the start marker."
     fi
 
     awk '
@@ -1601,15 +1694,19 @@ flush_dns_caches() {
     fi
     if command -v dnsmasq >/dev/null 2>&1 &&
        systemctl is-active --quiet dnsmasq 2>/dev/null; then
-        systemctl restart dnsmasq >/dev/null 2>&1 || true
+        # SIGHUP reloads /etc/hosts without dropping DNS service briefly.
+        systemctl reload dnsmasq >/dev/null 2>&1 ||
+            systemctl restart dnsmasq >/dev/null 2>&1 || true
     fi
 }
 
 apply_hosts_update() {
-    check_github520
+    acquire_update_lock
+    prepare_github520_download
     fetch_hosts_block
     build_new_hosts
     install_new_hosts
+    release_update_lock
 }
 
 # -----------------------------------------------------------------------------
@@ -1660,7 +1757,7 @@ EOF
 Description=Hourly GitHub520 hosts update
 
 [Timer]
-OnBootSec=5min
+OnActiveSec=5min
 OnUnitActiveSec=1h
 AccuracySec=1min
 RandomizedDelaySec=30s
@@ -1698,9 +1795,29 @@ latest_hosts_backup() {
 }
 
 strip_github520_block_from_hosts() {
-    local tmp
+    local tmp starts ends first_start first_end
 
     [ -f "$HOSTS_FILE" ] || return 1
+
+    starts=$(grep -ciE '^[[:space:]]*#[[:space:]]*github520[[:space:]]+host[[:space:]]+start' "$HOSTS_FILE" || true)
+    ends=$(grep -ciE '^[[:space:]]*#[[:space:]]*github520[[:space:]]+host[[:space:]]+end' "$HOSTS_FILE" || true)
+    if [ "$starts" -ne "$ends" ]; then
+        warn "$HOSTS_FILE contains an unbalanced GitHub520 block (start=$starts end=$ends); refusing to strip it."
+        return 1
+    fi
+    if [ "$starts" -eq 0 ]; then
+        return 0
+    fi
+
+    first_start=$(grep -niE '^[[:space:]]*#[[:space:]]*github520[[:space:]]+host[[:space:]]+start' "$HOSTS_FILE" |
+        head -n 1 | cut -d: -f1 || true)
+    first_end=$(grep -niE '^[[:space:]]*#[[:space:]]*github520[[:space:]]+host[[:space:]]+end' "$HOSTS_FILE" |
+        head -n 1 | cut -d: -f1 || true)
+    if [ -n "$first_start" ] && [ -n "$first_end" ] && [ "$first_start" -ge "$first_end" ]; then
+        warn "$HOSTS_FILE has its GitHub520 end marker before the start marker; refusing to strip it."
+        return 1
+    fi
+
     tmp=$(mktemp "${TMPDIR:-/tmp}/github520-strip.XXXXXX") || return 1
 
     if ! awk '
@@ -1806,8 +1923,10 @@ do_uninstall() {
     remove_systemd_units
 
     if [ "$mode" = "complete" ]; then
+        acquire_update_lock
         restore_hosts_for_complete_uninstall || \
             die "Could not restore $HOSTS_FILE; logs and backups were kept."
+        release_update_lock
         remove_installed_cli
         purge_installation_data
         printf '\nGitHub520-Arch has been completely removed.\n'
@@ -1826,6 +1945,8 @@ do_uninstall() {
 restore_hosts_command() {
     local target=$RESTORE_TARGET
     local tmp=""
+
+    acquire_update_lock
 
     if [ -z "$target" ] || [ "$target" = "latest" ]; then
         target=$(latest_hosts_backup)
@@ -1853,6 +1974,7 @@ restore_hosts_command() {
         die "Failed to restore $HOSTS_FILE."
     fi
     rm -f -- "$tmp"
+    release_update_lock
     ok "Restored $HOSTS_FILE from $target"
 }
 
@@ -1942,12 +2064,16 @@ run_install() {
 
     detect_filesystem_and_snapshot
     detect_network_backends
-    detect_default_route
+    if ! detect_default_route; then
+        log "Static network configuration will be skipped."
+    fi
 
-    check_github520
+    acquire_update_lock
+    prepare_github520_download
     fetch_hosts_block
     build_new_hosts
     install_new_hosts
+    release_update_lock
     flush_dns_caches
 
     ask_network_change
@@ -2022,7 +2148,7 @@ EOF
         printf '  Static address : %s\n' "$STATIC_CIDR"
         printf '  Gateway        : %s\n' "$GATEWAY"
         if [ "${#DNS_SERVERS[@]}" -gt 0 ]; then
-            printf '  DNS servers    : %s\n' "${DNS_SERVERS[*]}"
+            printf '  DNS servers    : %s\n' "$(join_words "${DNS_SERVERS[@]}")"
         fi
         printf '  Network backup : %s\n' "$NET_BACKUP_DIR"
     else
