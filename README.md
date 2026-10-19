@@ -1,15 +1,27 @@
 # GitHub520 Scripts for Linux
 
-本仓库包含两个 GitHub520 hosts 管理脚本：
+本仓库包含一个统一安装入口 `install.sh` 和两个 GitHub520 hosts 管理脚本：
 
-| 脚本 | 目标系统 | CLI |
+| 文件 | 用途 | CLI |
 |---|---|---|
+| **install.sh** | 统一安装入口，自动选择并拉起对应脚本 | — |
 | **Github520-Arch.sh** | Arch Linux（`ID=arch`） | `github520-arch` |
 | **github520-deploy.sh** | 通用 Linux（非 Arch，systemd） | `github520-deploy` |
 
-两者都提供：
+`install.sh` 提供：
 
-- 猫娘风格欢迎与结束语
+- 主动请求 sudo
+- 第一次中英猫娘欢迎语
+- 检测发行版、内核、架构、systemd
+- 15 秒倒计时确认（默认取消）
+- 拉起前执行 `bash -n` 语法检查
+- 根据发行版自动选择 Arch 版或通用版
+- 拒绝直接运行仓库副本的 `install`，统一入口安装
+
+两个子脚本都提供：
+
+- 第二次猫娘风格欢迎与结束语
+- 再次检测发行版；通用版额外检测 WSL/Docker 与 KVM/QEMU/Hyper-V
 - root/sudo 权限处理
 - Btrfs/snapper 快照
 - 多源 GitHub520 下载与自动回退
@@ -21,12 +33,25 @@
 
 > 本项目不是 GitHub520 官方项目。hosts 内容来自 GitHub520 及其镜像源。
 >
-> 当前均为 **v0.2 beta**，请先备份并在测试机验证。
+> `install.sh` 与两个脚本均为 **v0.2 beta**，请先备份并在测试机验证。
+
+---
+
+## 获取仓库（三选一）
+
+| 源 | 克隆命令 |
+|---|---|
+| **GitHub** | `git clone https://github.com/WS-CatGirl/github520-deploy.git` |
+| **Gitee** | `git clone https://gitee.com/wscatgirl/github520-deploy.git` |
+| **GitCode** | `git clone https://gitcode.com/WS_CatGirl/github520-deploy.git` |
+
+> **三个源内容相同，任选一个即可，不要重复克隆。**
 
 ---
 
 ## 目录
 
+- [获取仓库（三选一）](#获取仓库三选一)
 - [选择哪个脚本](#选择哪个脚本)
 - [功能对比](#功能对比)
 - [系统要求](#系统要求)
@@ -47,33 +72,37 @@
 
 ## 选择哪个脚本
 
-### 使用 `Github520-Arch.sh`，如果：
+实际安装统一由 `install.sh` 自动选择，不需要手动运行两个子脚本。
 
-- 系统是 Arch Linux；
+### `install.sh` 会选择 Arch 版，如果：
+
+- 系统是 Arch Linux（`/etc/os-release` 中 `ID=arch`）；
 - 使用 NetworkManager 或 systemd-networkd；
 - 希望使用 Arch 专用的 CLI 和 timer 名称。
 
-```bash
-sudo ./Github520-Arch.sh install
-```
-
-### 使用 `github520-deploy.sh`，如果：
+### `install.sh` 会选择通用版，如果：
 
 - 系统是 Debian、Ubuntu、Fedora、CentOS、Rocky、AlmaLinux、openSUSE 等；
 - 需要通用 Linux（非 Arch）支持；
 - 更常使用 ifupdown 管理网络；
 - 需要显式拒绝 WSL/Docker 容器，并对 KVM/QEMU/VMware/Hyper-V 虚拟机给出警告。
 
+安装统一使用：
+
 ```bash
-sudo ./github520-deploy.sh install
+bash ./install.sh
 ```
 
+> 直接执行 `sudo ./Github520-Arch.sh install` 或 `sudo ./github520-deploy.sh install` 会被拒绝，并提示使用 `install.sh`。
+>
 > **不要在同一台机器同时安装两个脚本的 timer。** 它们都会修改 `/etc/hosts`，可能互相覆盖。请只选择一个。
 
 ## 功能对比
 
 | 项目 | Github520-Arch.sh | github520-deploy.sh |
 |---|---|---|
+| 安装入口 | `install.sh` 自动选择 | `install.sh` 自动选择 |
+| 直接执行 install | 拒绝，提示使用 `install.sh` | 拒绝，提示使用 `install.sh` |
 | 系统检查 | 仅 Arch Linux（`ID=arch`） | 非 Arch Linux（需 systemd）；检测到 Arch 会强制退出 |
 | WSL/容器 | 未单独判断；通常因 systemd 检查失败而退出 | WSL、Docker、Podman、LXC 等直接退出 |
 | 虚拟机 | 无单独 VM 警告 | KVM/QEMU/VMware/Hyper-V 等仅警告并继续 |
@@ -91,9 +120,12 @@ sudo ./github520-deploy.sh install
 - Linux
 - systemd
 - bash 4+
+- `sudo`（非 root 运行 `install.sh` 时）
+- `stty`（coreutils，用于 15 秒倒计时）
 - `curl`
 - `ip`（iproute2）
 - `findmnt`、`awk`、`sed`、`grep`、`mktemp`、`install`
+- `git`（仅克隆仓库时）
 - 可选：
   - Btrfs + `snapper` + `btrfs-progs`
   - NetworkManager、systemd-networkd 或 ifupdown
@@ -103,47 +135,40 @@ sudo ./github520-deploy.sh install
 
 ## 安装
 
-### Arch Linux
+使用上方“获取仓库（三选一）”完成克隆后，进入目录并运行统一安装器：
 
 ```bash
-git clone https://github.com/WS-CatGirl/github520-deploy.git
 cd github520-deploy
-
-chmod +x Github520-Arch.sh
-sudo ./Github520-Arch.sh install
+bash ./install.sh
 ```
+
+`install.sh` 会主动请求 sudo、检测系统、显示信息、15 秒确认，然后自动选择并拉起 Arch 或通用脚本；也可以显式运行 `sudo bash ./install.sh`。
+
+它依次执行：
+
+1. 显示第一次中英猫娘欢迎语；
+2. 检测发行版、内核、架构、systemd；
+3. 显示系统信息；
+4. 15 秒倒计时确认（默认取消）；
+5. 检查对应子脚本存在并执行 `bash -n`；
+6. 按发行版拉起：
+   - `ID=arch` → `Github520-Arch.sh`
+   - 其他 systemd Linux → `github520-deploy.sh`
+7. 子脚本再次检测发行版；通用版还会检测 WSL/Docker 与 KVM/QEMU/Hyper-V。随后显示第二次欢迎语并继续安装。
+
+> 不要直接运行 `sudo ./Github520-Arch.sh install` 或 `sudo ./github520-deploy.sh install`。这会被拒绝，并提示使用 `install.sh`。
+>
+> 安装完成后使用 `github520-arch` / `github520-deploy` 管理，不再需要仓库里的子脚本。
 
 安装后：
 
 ```bash
 sudo github520-arch status
 sudo github520-arch update
-```
 
-### 通用 Linux
-
-```bash
-git clone https://github.com/WS-CatGirl/github520-deploy.git
-cd github520-deploy
-
-chmod +x github520-deploy.sh
-sudo ./github520-deploy.sh install
-```
-
-安装后：
-
-```bash
 sudo github520-deploy status
 sudo github520-deploy update
 ```
-
-> 通用版检测到 Arch Linux 会强制退出，并提示改用 `Github520-Arch.sh`。
->
-> Arch 用户请不要在通用版上继续。
-
-> 不带 `install` 参数只显示状态和简短帮助，不会安装或重装。
->
-> `sudo ./Github520-Arch.sh` / `sudo ./github520-deploy.sh` 与对应 CLI 的无参数行为一致。
 
 ## PATH 与 CLI
 
@@ -180,6 +205,8 @@ sudo /usr/local/bin/github520-deploy status
 
 ## 命令一览
 
+仓库安装使用 `bash ./install.sh`；下表是安装完成后的 CLI 管理命令。
+
 以下命令对两个 CLI 都适用，只需替换命令名：
 
 - Arch：`github520-arch`
@@ -188,7 +215,7 @@ sudo /usr/local/bin/github520-deploy status
 | 命令 | 说明 |
 |---|---|
 | `sudo <cli>` | 显示状态和简短帮助 |
-| `sudo <cli> install` | 交互式安装 / 重新部署 |
+| `sudo <cli> install` | 用已安装 CLI 重新部署（仓库安装优先用 `install.sh`） |
 | `sudo <cli> reinstall` | 使用已安装版本重新部署 |
 | `sudo <cli> update` | 立即拉取并刷新 hosts |
 | `sudo <cli> refresh` | `update` 别名 |
@@ -222,27 +249,48 @@ Systemd 内部模式：
 
 ## 安装流程
 
-### 通用版 `github520-deploy.sh`
+### 统一入口 `install.sh`
 
 ```text
-欢迎 / Welcome
+用户 git clone（三选一）
   ↓
-root / sudo 权限检查
+bash ./install.sh
   ↓
-Linux 检查
-  ├─ Arch Linux → 退出，提示改用 Github520-Arch.sh
-  ├─ WSL / Docker / Podman / LXC → 退出
-  └─ KVM / QEMU / VMware / Hyper-V → 警告并继续
+主动请求 sudo
+  ↓
+第一次欢迎语
+  ↓
+检测发行版 / 内核 / 架构 / systemd
+  ↓
+显示系统信息
+  ↓
+15 秒倒计时（默认取消）
+  ↓
+检查子脚本存在 + bash -n
+  ↓
+按发行版拉起
+  ├─ Arch → Github520-Arch.sh install
+  └─ 其他 → github520-deploy.sh install
+```
+
+### 子脚本第二阶段
+
+```text
+第二次欢迎语
+  ↓
+再次检测发行版
+  ├─ 通用版：拒绝 Arch；WSL/Docker/Podman/LXC 退出；VM 警告
+  └─ Arch 版：仅接受 ID=arch；systemd 检查
+  ↓
+root / sudo 检查
   ↓
 首次备份原始 /etc/hosts
   ↓
 Btrfs + snapper 可选快照
   ↓
-网络后端检测（ifupdown 优先）
+网络后端检测
   ↓
-GitHub520 源检测与下载
-  ↓
-备份并更新 /etc/hosts
+GitHub520 下载并备份、更新 hosts
   ↓
 询问是否配置静态 IPv4 / DNS
   ↓
@@ -251,31 +299,10 @@ GitHub520 源检测与下载
 清理临时文件并输出总结
 ```
 
-### Arch 版 `Github520-Arch.sh`
+网络后端优先级：
 
-```text
-欢迎 / Welcome
-  ↓
-root / sudo 权限检查
-  ↓
-Arch Linux 检查（ID=arch）
-  ↓
-首次备份原始 /etc/hosts
-  ↓
-Btrfs + snapper 可选快照
-  ↓
-网络后端检测（NetworkManager 优先）
-  ↓
-GitHub520 源检测与下载
-  ↓
-备份并更新 /etc/hosts
-  ↓
-询问是否配置静态 IPv4 / DNS
-  ↓
-安装 CLI + hourly timer
-  ↓
-清理临时文件并输出总结
-```
+- 通用版：ifupdown → NetworkManager → systemd-networkd；
+- Arch 版：NetworkManager → systemd-networkd → ifupdown。
 
 ## Btrfs 与 snapper 快照
 
@@ -412,7 +439,8 @@ sudo github520-deploy --uninstall-completely --force
 
 ## 安全说明
 
-- 安装器以 root 修改 hosts、网络配置并安装 systemd unit。
+- `install.sh` 主动请求 sudo，以 root 修改 hosts、网络配置并安装 systemd unit。
+- 子脚本直接执行 `install` 会被拒绝，必须通过 `install.sh` 安装。
 - hosts 内容来自 GitHub520 及第三方 CDN/镜像；脚本校验结构和条目数量，但**没有域名白名单**。
 - 下载仅允许 HTTPS，并拒绝从 HTTPS 跳转到 HTTP。
 - Timer 以 root 执行本地脚本；确保 `/usr/local/bin/github520-arch` 或 `/usr/local/bin/github520-deploy` 归 root 所有且不可被普通用户写入。
@@ -424,7 +452,9 @@ sudo github520-deploy --uninstall-completely --force
 
 ### Q1: 应该选哪个脚本？
 
-- Arch Linux：`Github520-Arch.sh`；
+实际安装由 `install.sh` 自动选择：
+
+- `ID=arch`：`Github520-Arch.sh`；
 - 其他 Linux：`github520-deploy.sh`。
 
 ### Q2: 两个脚本可以同时安装吗？
@@ -433,12 +463,14 @@ sudo github520-deploy --uninstall-completely --force
 
 ### Q3: 为什么 `sudo github520-arch` / `sudo github520-deploy` 显示状态而不是安装？
 
-为了防止误重装。安装使用：
+为了防止误重装。仓库安装使用：
 
 ```bash
-sudo github520-arch install
-sudo github520-deploy install
+cd github520-deploy
+bash ./install.sh
 ```
+
+已安装 CLI 的 `install` / `reinstall` 只用于重新部署。
 
 ### Q4: 命令提示 not found？
 
@@ -506,43 +538,60 @@ Arch 版没有单独的 WSL/容器判断，但要求 systemd 和 `/run/systemd/s
 
 ### Q16: 如何重装/更新脚本？
 
-从仓库重新运行安装：
+从仓库重新运行统一安装器：
 
 ```bash
-sudo ./Github520-Arch.sh install
-sudo ./github520-deploy.sh install
+cd github520-deploy
+bash ./install.sh
 ```
 
 `reinstall` 只使用已安装 CLI 重新部署，不会从网络下载新版本。
 
 ### Q17: 这是正式版吗？
 
-不是。两个脚本均为 **v0.2 beta**，请先备份并反馈问题。
+不是。两个脚本和 `install.sh` 均为 **v0.2 beta**，请先备份并反馈问题。
 
-### Q18: 通用版提示 “Arch Linux detected” 怎么办？
+### Q18: 为什么直接运行子脚本安装会被拒绝？
 
-说明你在 Arch Linux 上运行了通用版。脚本会强制退出，避免两个版本重复修改 hosts。请改用 Arch 版：
+为了防止在错误发行版上装错版本，仓库里的两个子脚本副本只允许由 `install.sh` 拉起安装。直接执行 `sudo ./Github520-Arch.sh install` 或 `sudo ./github520-deploy.sh install` 会报错，并提示：
 
 ```bash
-sudo ./Github520-Arch.sh install
+cd github520-deploy
+bash ./install.sh
 ```
 
-安装后使用 `sudo github520-arch ...` 管理。
+已安装 CLI 的 `update`、`status`、`logs`、`restore`、`--uninstall` 等命令不受影响。
+
+### Q19: 通过 `install.sh` 还会选错 Arch/通用版吗？
+
+正常不会。`install.sh` 根据 `/etc/os-release` 的 `ID` 选择：`ID=arch` 用 Arch 版，其他用通用版；子脚本启动后还会再次检测，选错会直接报错。
 
 ---
 
 # English
 
-This repository contains two GitHub520 hosts managers:
+This repository contains a unified installer and two GitHub520 hosts managers:
 
-| Script | Target | CLI |
+| File | Purpose | CLI |
 |---|---|---|
+| **install.sh** | Unified installer; detects the platform and launches the right script | — |
 | **Github520-Arch.sh** | Arch Linux (`ID=arch`) | `github520-arch` |
 | **github520-deploy.sh** | Generic Linux (non-Arch, systemd) | `github520-deploy` |
 
-Both provide:
+`install.sh` provides:
 
-- Catgirl-style welcome and final message
+- Proactive sudo request
+- First bilingual catgirl welcome
+- Distribution, kernel, architecture and systemd detection
+- 15-second confirmation countdown (default: cancel)
+- `bash -n` syntax check before launch
+- Automatic selection of the Arch or generic script
+- Direct `install` through repository copies is rejected; use the installer
+
+Both child scripts provide:
+
+- Second catgirl welcome and final message
+- A second distribution check; the generic script also checks WSL/Docker and KVM/QEMU/Hyper-V
 - root/sudo handling
 - Btrfs/snapper snapshots
 - Multiple GitHub520 sources with fallback
@@ -552,11 +601,29 @@ Both provide:
 - status, logs, manual refresh, reinstall and uninstall
 - original hosts backup and complete-uninstall restore
 
-> This is not an official GitHub520 project. Both scripts are **v0.2 beta**.
+> This is not an official GitHub520 project. Both scripts and `install.sh` are **v0.2 beta**.
+
+## Get the repository (choose one)
+
+| Source | Clone command |
+|---|---|
+| **GitHub** | `git clone https://github.com/WS-CatGirl/github520-deploy.git` |
+| **Gitee** | `git clone https://gitee.com/wscatgirl/github520-deploy.git` |
+| **GitCode** | `git clone https://gitcode.com/WS_CatGirl/github520-deploy.git` |
+
+> **All three sources contain the same repository. Choose one only; do not clone all three.**
 
 ## Which script?
 
-Use `Github520-Arch.sh` on Arch Linux. Use `github520-deploy.sh` on other Linux distributions, especially systems using ifupdown. The generic script exits on Arch and points to the Arch version.
+`install.sh` selects the script automatically. It uses `Github520-Arch.sh` on Arch Linux (`ID=arch`) and `github520-deploy.sh` on other systemd Linux distributions, especially systems using ifupdown.
+
+Install with:
+
+```bash
+bash ./install.sh
+```
+
+Direct `sudo ./Github520-Arch.sh install` or `sudo ./github520-deploy.sh install` calls are rejected with a hint to use `install.sh`.
 
 Do **not** enable both timers on the same machine; both modify `/etc/hosts`.
 
@@ -564,6 +631,8 @@ Do **not** enable both timers on the same machine; both modify `/etc/hosts`.
 
 | Item | Github520-Arch.sh | github520-deploy.sh |
 |---|---|---|
+| Installer | selected by `install.sh` | selected by `install.sh` |
+| Direct install | rejected; use `install.sh` | rejected; use `install.sh` |
 | OS check | Arch only (`ID=arch`) | Non-Arch Linux with systemd; exits on Arch |
 | WSL/containers | no explicit check; systemd check usually rejects | WSL/Docker/Podman/LXC exit |
 | Virtual machines | no separate VM warning | KVM/QEMU/VMware/Hyper-V warn and continue |
@@ -580,28 +649,52 @@ Do **not** enable both timers on the same machine; both modify `/etc/hosts`.
 - Linux
 - systemd
 - bash 4+
+- `sudo` (when `install.sh` is not run as root)
+- `stty` (coreutils, for the 15-second countdown)
 - `curl`, `ip`, `findmnt`, `awk`, `sed`, `grep`, `mktemp`, `install`
+- `git` (only for cloning the repository)
 - Optional: Btrfs + snapper + btrfs-progs
 - Optional: NetworkManager, systemd-networkd, ifupdown
 - Optional: systemd-resolved, resolvconf, nscd or dnsmasq
 
+`Github520-Arch.sh` additionally requires `ID=arch` in `/etc/os-release`.
+
 ## Install
 
-### Arch
+After cloning from one of the sources above, enter the directory and run the unified installer:
 
 ```bash
-chmod +x Github520-Arch.sh
-sudo ./Github520-Arch.sh install
+cd github520-deploy
+bash ./install.sh
 ```
 
-### Generic
+`install.sh` requests sudo, detects the system, shows a summary, asks for confirmation with a 15-second countdown, and then launches the correct script; `sudo bash ./install.sh` also works.
+
+It performs:
+
+1. The first bilingual catgirl welcome.
+2. Distribution, kernel, architecture and systemd detection.
+3. A system information summary.
+4. A 15-second confirmation countdown (default: cancel).
+5. A file check and `bash -n` syntax check for the selected script.
+6. Launch by distribution:
+   - `ID=arch` → `Github520-Arch.sh`
+   - other systemd Linux → `github520-deploy.sh`
+7. The child script re-checks the distribution; the generic script also checks WSL/Docker and KVM/QEMU/Hyper-V. It then shows the second welcome and continues.
+
+> Do not run `sudo ./Github520-Arch.sh install` or `sudo ./github520-deploy.sh install` directly. They are rejected with a hint to use `install.sh`.
+>
+> After installation, manage the tool with `github520-arch` or `github520-deploy`; the repository scripts are no longer needed.
+
+After installation:
 
 ```bash
-chmod +x github520-deploy.sh
-sudo ./github520-deploy.sh install
-```
+sudo github520-arch status
+sudo github520-arch update
 
-Running without `install` only shows status/help.
+sudo github520-deploy status
+sudo github520-deploy update
+```
 
 ## PATH and CLI
 
@@ -631,12 +724,14 @@ Compatibility symlinks:
 
 ## Commands
 
+Use `bash ./install.sh` for repository installs. The commands below manage an installed copy.
+
 Replace `<cli>` with `github520-arch` or `github520-deploy`:
 
 | Command | Description |
 |---|---|
 | `sudo <cli>` | Status and short help |
-| `sudo <cli> install` | Interactive install/redeploy |
+| `sudo <cli> install` | Redeploy using the installed CLI (prefer `install.sh` for repository installs) |
 | `sudo <cli> reinstall` | Redeploy using the installed CLI |
 | `sudo <cli> update` | Immediately refresh hosts |
 | `sudo <cli> refresh` | Alias for update |
@@ -654,35 +749,60 @@ Replace `<cli>` with `github520-arch` or `github520-deploy`:
 
 ## Install flows
 
-### Generic
+### Unified entry: `install.sh`
 
-1. Welcome.
-2. Root/sudo check.
-3. Linux check:
-   - Arch Linux → exit and point to `Github520-Arch.sh`;
-   - WSL/Docker/Podman/LXC → exit;
-   - KVM/QEMU/VMware/Hyper-V → warn and continue.
-4. Back up original `/etc/hosts` (first install).
-5. Optional Btrfs/snapper snapshot.
-6. Network backend detection (ifupdown first).
-7. GitHub520 source check/download.
-8. Update `/etc/hosts`.
-9. Optional static IPv4/DNS.
-10. Install CLI + hourly timer.
-11. Cleanup and summary.
+```text
+git clone (one of three sources)
+  ↓
+bash ./install.sh
+  ↓
+request sudo
+  ↓
+first welcome
+  ↓
+distribution / kernel / architecture / systemd detection
+  ↓
+system information
+  ↓
+15-second countdown (default: cancel)
+  ↓
+file check + bash -n
+  ↓
+launch by distribution
+  ├─ Arch → Github520-Arch.sh install
+  └─ other → github520-deploy.sh install
+```
 
-### Arch
+### Child script: second stage
 
-1. Welcome.
-2. Root/sudo check.
-3. Arch Linux check.
-4. Back up original hosts.
-5. Optional snapshot.
-6. Network backend detection (NetworkManager first).
-7. GitHub520 download/update.
-8. Optional static IPv4/DNS.
-9. Install CLI + hourly timer.
-10. Cleanup and summary.
+```text
+second welcome
+  ↓
+distribution check again
+  ├─ Generic: reject Arch; WSL/Docker/Podman/LXC exit; VM warning
+  └─ Arch: ID=arch only; systemd check
+  ↓
+root/sudo check
+  ↓
+back up original /etc/hosts
+  ↓
+optional Btrfs/snapper snapshot
+  ↓
+network backend detection
+  ↓
+GitHub520 download, backup and hosts update
+  ↓
+optional static IPv4/DNS
+  ↓
+install CLI + hourly timer
+  ↓
+cleanup and summary
+```
+
+Network backend priority:
+
+- Generic: ifupdown → NetworkManager → systemd-networkd.
+- Arch: NetworkManager → systemd-networkd → ifupdown.
 
 ## Snapshots
 
@@ -742,7 +862,8 @@ Complete uninstall restores the pre-install hosts, removes CLI/units, logs, back
 
 ## Security
 
-- Installers run as root and modify system files, networking and systemd units.
+- `install.sh` requests sudo and runs as root to modify hosts, networking and systemd units.
+- Direct child `install` calls are rejected; installation must go through `install.sh`.
 - Hosts content comes from GitHub520 and third-party mirrors. Structure and entry count are validated, but no domain allowlist is enforced.
 - Downloads are HTTPS-only; redirects from HTTPS to HTTP are refused.
 - Keep the installed CLI root-owned and non-writable by unprivileged users.
@@ -753,7 +874,9 @@ Complete uninstall restores the pre-install hosts, removes CLI/units, logs, back
 
 ### 1. Which script should I use?
 
-- Arch Linux: `Github520-Arch.sh`.
+`install.sh` selects it automatically:
+
+- `ID=arch`: `Github520-Arch.sh`.
 - Other Linux: `github520-deploy.sh`.
 
 ### 2. Can I install both?
@@ -762,7 +885,7 @@ The paths and unit names differ, but both timers modify `/etc/hosts`. Do not ena
 
 ### 3. Why do the CLIs show status instead of installing?
 
-No arguments show status/help to prevent accidental reinstallation. Use `install`.
+No arguments show status/help to prevent accidental reinstallation. Use `bash ./install.sh` from the repository; the installed CLI's `install`/`reinstall` only redeploys.
 
 ### 4. `command not found`
 
@@ -821,25 +944,30 @@ Use a local/cloud console, restore from the script's `net-*` backup, restart the
 
 ### 16. How do I reinstall/update?
 
-Run the repository installer again:
+Run the unified installer again:
 
 ```bash
-sudo ./Github520-Arch.sh install
-sudo ./github520-deploy.sh install
+cd github520-deploy
+bash ./install.sh
 ```
 
 `reinstall` only redeploys the installed CLI; it does not download a new version.
 
-### 17. The generic script says “Arch Linux detected”
+### 17. Is this stable?
 
-You are running the generic script on Arch Linux. It exits to avoid conflicting with the Arch version. Use:
+No. Both scripts and `install.sh` are **v0.2 beta**. Keep backups and report issues.
+
+### 18. Why is direct child installation rejected?
+
+To avoid installing the wrong variant, repository copies of `Github520-Arch.sh` and `github520-deploy.sh` reject `install` unless they are launched by `install.sh`. Use:
 
 ```bash
-sudo ./Github520-Arch.sh install
+cd github520-deploy
+bash ./install.sh
 ```
 
-Then manage it with `sudo github520-arch ...`.
+Installed CLI commands such as `update`, `status`, `logs`, `restore` and `--uninstall` still work.
 
-### 18. Is this stable?
+### 19. Can `install.sh` select the wrong variant?
 
-No. Both scripts are **v0.2 beta**. Keep backups and report issues.
+Normally no. It reads `ID` from `/etc/os-release`: `ID=arch` selects the Arch script, everything else selects the generic script. The child script checks the platform again and exits on a mismatch.

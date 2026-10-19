@@ -210,9 +210,13 @@ Usage:
   sudo ./Github520-Arch.sh [command]
   github520-arch                 # show status and a short help hint
 
+Installation:
+  Run ./install.sh from the cloned repository.
+  Direct installation through a repository copy of this script is rejected.
+
 Commands:
-  install, --install             Run the interactive installer and install
-                                 /usr/local/bin/github520-arch.
+  install, --install             Install via ./install.sh. The installed CLI
+                                 may redeploy; repository copies are rejected.
   reinstall                      Re-run the installer using the installed
                                  script (same as install).
   update, refresh, --update      Immediately download and refresh /etc/hosts.
@@ -235,7 +239,7 @@ Options:
   -f, --follow                   Follow the log (with logs).
       --force                    Skip the confirmation for --uninstall-completely.
 
-Install flow:
+Install flow (started by install.sh):
   1. Welcome
   2. Root/sudo check
   3. Arch Linux check
@@ -2184,10 +2188,27 @@ EOF
 # -----------------------------------------------------------------------------
 # Main
 # -----------------------------------------------------------------------------
+is_installed_cli() {
+    [ -n "${SELF:-}" ] && [ "$SELF" = "$INSTALL_PATH" ] && return 0
+    [ "$(command -v "$0" 2>/dev/null || true)" = "$INSTALL_PATH" ] && return 0
+    return 1
+}
+
 main() {
     local welcome_shown=0
 
+    SELF=$(readlink -f -- "$0" 2>/dev/null || true)
+    [ -n "$SELF" ] || SELF=${0:-}
+
     parse_args "$@"
+
+    if [ "$COMMAND" = "install" ] &&
+       [ "${GITHUB520_FROM_INSTALLER:-0}" != "1" ] &&
+       ! is_installed_cli; then
+        err "Direct installation is not supported."
+        err "Please run: bash ./install.sh"
+        exit 2
+    fi
 
     case "$COMMAND" in
         status)
