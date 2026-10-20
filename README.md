@@ -28,6 +28,7 @@
 - 多源 GitHub520 下载与自动回退
 - `/etc/hosts` 备份、更新与恢复
 - 可选静态 IPv4/DNS
+- DNS 可达性与真实解析校验，失败可重试或恢复旧配置
 - systemd service + hourly timer
 - 状态、日志、手动刷新、重装、卸载
 - 原始 hosts 备份与完整卸载恢复
@@ -295,6 +296,8 @@ GitHub520 下载并备份、更新 hosts
   ↓
 询问是否配置静态 IPv4 / DNS
   ↓
+验证静态 IP / DNS（失败可重试或恢复）
+  ↓
 安装 CLI + hourly timer
   ↓
 清理临时文件并输出总结
@@ -345,6 +348,20 @@ GitHub520 下载并备份、更新 hosts
 - systemd-networkd：写 99 优先级 `.network` 文件并 reload。
 
 修改静态 IP/DNS 会保存旧配置；验证失败时尝试回滚。
+
+### DNS 校验与失败恢复
+
+应用 IP/DNS 后，脚本会验证 DNS：
+
+- 先确认新 DNS 已实际生效；
+- `ping` 可用时检查 DNS 服务器可达性；`ping` 缺失只警告，不阻塞；
+- 优先用 `dig @DNS example.com`，否则用 `getent ahostsv4 example.com` 或 `resolvectl query` 做真实解析；
+- 最多尝试 3 次，每次间隔 2 秒；
+- 3 次失败后提示：
+  - `[r]` 重试验证；
+  - `[c]` 从空白重新输入 DNS，并按当前后端重新应用；
+  - `[a]` 恢复旧网络配置，随后询问 `[k]` 保留并继续安装，或 `[a]` 取消安装；
+- 不安装任何软件包；工具缺失时按可用工具降级。
 
 ### 风险
 
@@ -570,6 +587,10 @@ bash ./install.sh
 
 正常不会。`install.sh` 根据 `/etc/os-release` 的 `ID` 选择：`ID=arch` 用 Arch 版，其他用通用版；子脚本启动后还会再次检测，选错会直接报错。
 
+### Q20: DNS 填错了会怎样？
+
+应用 IP/DNS 后，脚本会检查 DNS 服务器可达性（`ping` 可用时），并用 `dig`、`getent` 或 `resolvectl` 做真实解析；最多尝试 3 次。失败后可 `[r]` 重试、`[c]` 从空白重新输入 DNS 并重新应用，或 `[a]` 恢复旧网络配置；恢复后选择 `[k]` 保留并继续安装，或 `[a]` 取消安装。
+
 ---
 
 # English
@@ -602,6 +623,7 @@ Both child scripts provide:
 - Multiple GitHub520 sources with fallback
 - `/etc/hosts` backup, update and restore
 - Optional static IPv4/DNS
+- DNS reachability and real-resolution validation, with retry or previous-config restore on failure
 - systemd service + hourly timer
 - status, logs, manual refresh, reinstall and uninstall
 - original hosts backup and complete-uninstall restore
@@ -799,6 +821,8 @@ GitHub520 download, backup and hosts update
   ↓
 optional static IPv4/DNS
   ↓
+validate static IP/DNS (retry or restore on failure)
+  ↓
 install CLI + hourly timer
   ↓
 cleanup and summary
@@ -828,6 +852,18 @@ Timeout, snapper error, a rejected confirmation or option 4 aborts. Option 3 con
 - Arch: NetworkManager → systemd-networkd → ifupdown.
 
 Static changes back up the old configuration and attempt rollback on verification failure. Changing the IP or restarting an interface can interrupt SSH. If no IPv4 default route exists, static network configuration is skipped and hosts updates continue. For ifupdown only the target IPv4 stanza is rewritten; `inet6` stanzas are preserved, but IPv4 options such as MTU/bridge/bond/VLAN may be lost.
+
+### DNS validation and recovery
+
+After applying IP/DNS, the script validates DNS:
+
+- first confirms the new DNS servers are actually active;
+- checks DNS server reachability with `ping` when available; a missing `ping` is only a warning;
+- performs a real lookup with `dig @DNS example.com`, otherwise `getent ahostsv4 example.com` or `resolvectl query`;
+- tries up to 3 times, with a 2-second delay between attempts;
+- on failure offers `[r]` retry, `[c]` re-enter DNS from blank and reapply, or `[a]` restore the previous network configuration;
+- after restore, `[k]` keeps the restored configuration and continues installation, while `[a]` aborts;
+- installs no packages; missing tools fall back to the tools that are available.
 
 ## systemd
 
@@ -977,3 +1013,7 @@ Installed CLI commands such as `update`, `status`, `logs`, `restore` and `--unin
 ### 19. Can `install.sh` select the wrong variant?
 
 Normally no. It reads `ID` from `/etc/os-release`: `ID=arch` selects the Arch script, everything else selects the generic script. The child script checks the platform again and exits on a mismatch.
+
+### 20. What happens if the DNS servers are wrong?
+
+After applying IP/DNS, the script checks DNS reachability (when `ping` is available) and performs a real lookup with `dig`, `getent` or `resolvectl`. It tries up to 3 times. On failure it offers `[r]` retry, `[c]` re-enter DNS from blank and reapply, or `[a]` restore the previous network configuration. After restore, choose `[k]` to keep it and continue installation, or `[a]` to abort.

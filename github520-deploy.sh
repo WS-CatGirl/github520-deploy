@@ -108,6 +108,7 @@ IFUPDOWN_OLD=""
 RESOLV_BACKUP=""
 DNS_VIA_RESOLVECTL=0
 DNS_VIA_RESOLVCONF=0
+DNS_VALIDATION_RESTORED=0
 
 _color_enabled() {
     [ -z "${NO_COLOR:-}" ] &&
@@ -306,8 +307,9 @@ Install flow (started by install.sh):
   5. Network backend detection
   6. GitHub520 download and /etc/hosts update
   7. Optional static IPv4/DNS configuration
-  8. Install and enable github520-deploy-update.timer (hourly)
-  9. Final summary
+  8. DNS validation and recovery
+  9. Install and enable github520-deploy-update.timer (hourly)
+ 10. Final summary
 
 Timer:
   systemctl status github520-deploy-update.timer
@@ -1072,15 +1074,18 @@ prompt_read() {
 }
 
 collect_dns_servers() {
+    local use_defaults=${1:-1}
     local dns1="" dns2="" def1="" def2=""
     local -a cur_dns=()
 
-    mapfile -t cur_dns < <(current_dns_servers)
-    def1=${cur_dns[0]:-}
-    def2=${cur_dns[1]:-}
+    if [ "$use_defaults" -eq 1 ]; then
+        mapfile -t cur_dns < <(current_dns_servers)
+        def1=${cur_dns[0]:-}
+        def2=${cur_dns[1]:-}
 
-    if [ -n "$def1" ]; then
-        printf 'Current DNS servers: %s\n' "$(join_words "${cur_dns[@]}")"
+        if [ -n "$def1" ]; then
+            printf 'Current DNS servers: %s\n' "$(join_words "${cur_dns[@]}")"
+        fi
     fi
 
     read_dns_value dns1 "DNS server 1" "$def1"
@@ -1389,11 +1394,13 @@ write_resolv_conf() {
     fi
 
     backup="$BACKUP_DIR/resolv.conf.$(date '+%Y%m%d-%H%M%S').$$"
-    cp -L -p -- "$RESOLV_FILE" "$backup" 2>/dev/null || {
-        warn "Could not back up $RESOLV_FILE."
-        backup=""
-    }
-    RESOLV_BACKUP=$backup
+    if [ -z "$RESOLV_BACKUP" ]; then
+        cp -L -p -- "$RESOLV_FILE" "$backup" 2>/dev/null || {
+            warn "Could not back up $RESOLV_FILE."
+            backup=""
+        }
+        RESOLV_BACKUP=$backup
+    fi
 
     new="$TMP_DIR/resolv.new"
     {
@@ -1436,6 +1443,104 @@ apply_dns_settings() {
     fi
 
     write_resolv_conf
+}
+
+reapply_dns_networkmanager() {
+    local dns_csv
+
+    [ -n "$BACKEND_ID" ] || return 1
+    dns_csv=$(join_dns_csv)
+    [ -n "$dns_csv" ] || return 1
+
+    nmcli connection modify "$BACKEND_ID" \
+        ipv4.dns "$dns_csv" ipv4.ignore-auto-dns yes || return 1
+    nmcli connection up "$BACKEND_ID" || return 1
+}
+
+reapply_dns_networkd() {
+    local file=$NETWORKD_FILE d tmp
+
+    [ -n "$file" ] && [ -f "$file" ] || return 1
+    tmp=$(mktemp "${TMPDIR:-/tmp}/github520-networkd.XXXXXX") || return 1
+    awk '!/^[[:space:]]*DNS=/' "$file" > "$tmp" || {
+        rm -f -- "$tmp"
+        return 1
+    }
+    for d in "${DNS_SERVERS[@]}"; do
+        printf 'DNS=%s\n' "$d" >> "$tmp"
+    done
+    cat -- "$tmp" > "$file" || {
+        rm -f -- "$tmp"
+        return 1
+    }
+    rm -f -- "$tmp"
+
+    if command -v networkctl >/dev/null 2>&1; then
+        networkctl reload || return 1
+        networkctl reconfigure "$IFACE" || return 1
+    else
+        systemctl reload systemd-networkd || return 1
+    fi
+}
+
+reapply_dns_ifupdown() {
+    local src=$IFUPDOWN_SRC dns_space tmp
+
+    [ -n "$src" ] && [ -f "$src" ] || return 1
+    dns_space=$(join_dns_space)
+    [ -n "$dns_space" ] || return 1
+
+    tmp=$(mktemp "${TMPDIR:-/tmp}/github520-interfaces.XXXXXX") || return 1
+    awk -v iface="$IFACE" -v dns="$dns_space" '
+        function add_dns() {
+            if (in_target && !dns_done && dns != "") {
+                print "    dns-nameservers " dns
+                dns_done = 1
+            }
+        }
+        /^[[:space:]]*iface[[:space:]]+/ {
+            add_dns()
+            in_target = ($2 == iface && ($3 == "inet" || $3 == ""))
+            if (in_target) found = 1
+            dns_done = 0
+            print
+            next
+        }
+        in_target && /^[[:space:]]*dns-nameservers[[:space:]]/ { next }
+        { print }
+        END {
+            add_dns()
+            if (!found) exit 1
+        }
+    ' "$src" > "$tmp" || {
+        rm -f -- "$tmp"
+        return 1
+    }
+    cat -- "$tmp" > "$src" || {
+        rm -f -- "$tmp"
+        return 1
+    }
+    rm -f -- "$tmp"
+
+    ifdown "$IFACE" >/dev/null 2>&1 || true
+    if ! ifup "$IFACE"; then
+        if [ -n "$IFUPDOWN_OLD" ] && [ -f "$IFUPDOWN_OLD" ]; then
+            cp -a -- "$IFUPDOWN_OLD" "$src" 2>/dev/null || true
+            ifup "$IFACE" >/dev/null 2>&1 || true
+        fi
+        return 1
+    fi
+}
+
+reapply_dns_backend() {
+    case "$BACKEND" in
+        networkmanager) reapply_dns_networkmanager ;;
+        networkd) reapply_dns_networkd ;;
+        ifupdown) reapply_dns_ifupdown ;;
+        *) return 1 ;;
+    esac || return 1
+
+    apply_dns_settings
 }
 
 rollback_network_config() {
@@ -1499,6 +1604,195 @@ verify_static_network() {
 
     ok "Static IPv4 configuration is active on $IFACE."
     return 0
+}
+
+run_limited() {
+    local seconds=$1
+
+    shift
+    if command -v timeout >/dev/null 2>&1; then
+        timeout "$seconds" "$@"
+    else
+        "$@"
+    fi
+}
+
+check_dns_reachability() {
+    local d
+
+    if ! command -v ping >/dev/null 2>&1; then
+        warn "ping is not installed; skipping DNS reachability check."
+        return 0
+    fi
+
+    for d in "${DNS_SERVERS[@]}"; do
+        if [ "${d#*:}" != "$d" ]; then
+            if ping -6 -c 1 -W 2 "$d" >/dev/null 2>&1; then
+                log "DNS server $d responded to ping."
+            else
+                warn "DNS server $d did not respond to ping; continuing with resolution test."
+            fi
+        else
+            if ping -c 1 -W 2 "$d" >/dev/null 2>&1; then
+                log "DNS server $d responded to ping."
+            else
+                warn "DNS server $d did not respond to ping; continuing with resolution test."
+            fi
+        fi
+    done
+    return 0
+}
+
+dns_lookup_check() {
+    local d domain out
+    local -a domains=(example.com www.example.com)
+
+    for domain in "${domains[@]}"; do
+        if command -v dig >/dev/null 2>&1; then
+            for d in "${DNS_SERVERS[@]}"; do
+                out=$(run_limited 5 dig +time=2 +tries=1 "@$d" "$domain" A +short 2>/dev/null || true)
+                if [ -n "$out" ]; then
+                    return 0
+                fi
+            done
+        fi
+
+        if command -v getent >/dev/null 2>&1; then
+            if run_limited 5 getent ahostsv4 "$domain" >/dev/null 2>&1; then
+                return 0
+            fi
+        fi
+
+        if command -v resolvectl >/dev/null 2>&1; then
+            if run_limited 5 resolvectl query "$domain" >/dev/null 2>&1; then
+                return 0
+            fi
+        fi
+
+        if command -v curl >/dev/null 2>&1; then
+            if run_limited 8 curl -fsS --max-time 5 --noproxy '*' "https://$domain" \
+                >/dev/null 2>&1; then
+                return 0
+            fi
+        fi
+    done
+
+    return 1
+}
+
+dns_config_matches() {
+    local current d found
+    local -a active_dns=()
+
+    mapfile -t active_dns < <(current_dns_servers)
+    [ "${#active_dns[@]}" -gt 0 ] || return 1
+
+    for d in "${DNS_SERVERS[@]}"; do
+        found=0
+        for current in "${active_dns[@]}"; do
+            if [ "$current" = "$d" ]; then
+                found=1
+                break
+            fi
+        done
+        [ "$found" -eq 1 ] || return 1
+    done
+    return 0
+}
+
+verify_dns_resolution() {
+    local attempt
+
+    [ "${#DNS_SERVERS[@]}" -gt 0 ] || return 0
+
+    for attempt in 1 2 3; do
+        log "DNS validation attempt $attempt/3..."
+        flush_dns_caches
+
+        if ! dns_config_matches; then
+            warn "The configured DNS servers are not active yet."
+        else
+            check_dns_reachability
+
+            if dns_lookup_check; then
+                ok "DNS resolution succeeded."
+                return 0
+            fi
+        fi
+
+        warn "DNS validation attempt $attempt/3 failed."
+        if [ "$attempt" -lt 3 ]; then
+            sleep 2
+        fi
+    done
+
+    return 1
+}
+
+handle_dns_failure() {
+    local choice secondary
+
+    while true; do
+        printf '\n'
+        warn "DNS validation failed after 3 attempts."
+        printf '  [r] Retry DNS validation\n'
+        printf '  [c] Change DNS servers and apply again\n'
+        printf '  [a] Restore the previous network configuration\n'
+        prompt_read choice "Select r, c or a: "
+        choice=${choice,,}
+
+        case "$choice" in
+            r|retry)
+                if verify_dns_resolution; then
+                    DNS_VALIDATION_RESTORED=0
+                    return 0
+                fi
+                ;;
+            c|change)
+                collect_dns_servers 0
+                if [ "${#DNS_SERVERS[@]}" -eq 0 ]; then
+                    warn "At least one DNS server is required when changing DNS."
+                    continue
+                fi
+                if ! reapply_dns_backend; then
+                    warn "Failed to apply the new DNS servers."
+                    continue
+                fi
+                if verify_dns_resolution; then
+                    DNS_VALIDATION_RESTORED=0
+                    return 0
+                fi
+                ;;
+            a|restore)
+                if ! rollback_network_config; then
+                    warn "Failed to restore the previous network configuration."
+                    continue
+                fi
+                NETWORK_ROLLBACK_PENDING=0
+                NETWORK_CONFIGURED=0
+
+                while true; do
+                    prompt_read secondary \
+                        "Previous network restored. [k]eep and continue installation, or [a]bort: "
+                    case "${secondary,,}" in
+                        k|keep)
+                            DNS_VALIDATION_RESTORED=1
+                            return 0
+                            ;;
+                        a|abort)
+                            die "Installation aborted by user."
+                            ;;
+                        *)
+                            warn "Enter k or a."
+                            ;;
+                    esac
+                done
+                ;;
+            *)
+                warn "Enter r, c or a."
+                ;;
+        esac
+    done
 }
 
 configure_static_network() {
@@ -1578,6 +1872,16 @@ configure_static_network() {
         rollback_network_config || warn "Network rollback was incomplete."
         NETWORK_ROLLBACK_PENDING=0
         die "Static network verification failed; previous configuration restored."
+    fi
+
+    DNS_VALIDATION_RESTORED=0
+    if [ "${#DNS_SERVERS[@]}" -gt 0 ]; then
+        if ! verify_dns_resolution; then
+            handle_dns_failure
+            if [ "$DNS_VALIDATION_RESTORED" -eq 1 ]; then
+                return 0
+            fi
+        fi
     fi
 
     NETWORK_ROLLBACK_PENDING=0
