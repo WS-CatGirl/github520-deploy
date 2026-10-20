@@ -35,7 +35,7 @@
 
 > 本项目不是 GitHub520 官方项目。hosts 内容来自 GitHub520 及其镜像源。
 >
-> `install.sh` 与两个脚本均为 **Beta v0.3**，请先备份并在测试机验证。
+> `install.sh` 与两个脚本均为 **Beta v0.4**，请先备份并在测试机验证。
 
 ---
 
@@ -467,7 +467,7 @@ sudo github520-deploy --uninstall-completely --force
 - Timer 以 root 执行本地脚本；确保 `/usr/local/bin/github520-arch` 或 `/usr/local/bin/github520-deploy` 归 root 所有且不可被普通用户写入。
 - 脚本不会安装软件包、修改防火墙或 SSH 配置。
 - 两个脚本的 timer 不应当同时启用。
-- 当前为 **Beta v0.3**，请保留快照和备份。
+- 当前为 **Beta v0.4**，请保留快照和备份。
 
 ## 常见问题 Q&A
 
@@ -570,7 +570,7 @@ bash ./install.sh
 
 ### Q17: 这是正式版吗？
 
-不是。两个脚本和 `install.sh` 均为 **Beta v0.3**，请先备份并反馈问题。
+不是。两个脚本和 `install.sh` 均为 **Beta v0.4**，请先备份并反馈问题。
 
 ### Q18: 为什么直接运行子脚本安装会被拒绝？
 
@@ -628,7 +628,7 @@ Both child scripts provide:
 - status, logs, manual refresh, reinstall and uninstall
 - original hosts backup and complete-uninstall restore
 
-> This is not an official GitHub520 project. Both scripts and `install.sh` are **Beta v0.3**.
+> This is not an official GitHub520 project. Both scripts and `install.sh` are **Beta v0.4**.
 
 ## Get the repository (choose one)
 
@@ -997,7 +997,7 @@ bash ./install.sh
 
 ### 17. Is this stable?
 
-No. Both scripts and `install.sh` are **Beta v0.3**. Keep backups and report issues.
+No. Both scripts and `install.sh` are **Beta v0.4**. Keep backups and report issues.
 
 ### 18. Why is direct child installation rejected?
 

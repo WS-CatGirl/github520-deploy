@@ -4,7 +4,7 @@
 #
 # GitHub520 hosts manager for Linux.
 #
-# Version : v0.3-beta
+# Version : v0.4-beta
 # Author  : 白丝小猫娘 (WS-CatGirl)
 #
 # Repositories:
@@ -31,7 +31,7 @@ IFS=$'\n\t'
 umask 022
 export LC_ALL=C
 
-VERSION="v0.3"
+VERSION="v0.4"
 RELEASE_CHANNEL="beta"
 SCRIPT_NAME=${0##*/}
 SELF=""
