@@ -1,12 +1,21 @@
 # GitHub520 Scripts for Linux
 
-本仓库包含一个统一安装入口 `install.sh` 和两个 GitHub520 hosts 管理脚本：
+本仓库包含一个统一安装入口 `install.sh`、一个引导脚本 `bootstrap.sh`，以及两个 GitHub520 hosts 管理脚本：
 
 | 文件 | 用途 | CLI |
 |---|---|---|
+| **bootstrap.sh** | 引导入口：检查环境、选择仓库源、clone 后调用 `install.sh` | — |
 | **install.sh** | 统一安装入口，自动选择并拉起对应脚本 | — |
 | **Github520-Arch.sh** | Arch Linux（`ID=arch`） | `github520-arch` |
 | **github520-deploy.sh** | 通用 Linux（非 Arch，systemd） | `github520-deploy` |
+
+`bootstrap.sh` 提供：
+
+- 检查 Linux、Bash 4+、curl、`/dev/tty` 和 git
+- git 缺失时只打印对应发行版安装命令，不自动安装
+- 四个仓库源选择（默认 Gitee）
+- 临时目录 + `git clone --depth 1`
+- 检查 `install.sh` 与两个子脚本后，用 `/dev/tty` 启动安装
 
 `install.sh` 提供：
 
@@ -35,26 +44,28 @@
 
 > 本项目不是 GitHub520 官方项目。hosts 内容来自 GitHub520 及其镜像源。
 >
-> `install.sh` 与两个脚本均为 **Beta v0.4**，请先备份并在测试机验证。
+> `bootstrap.sh`、`install.sh` 与两个脚本均为 **Beta v0.4**，请先备份并在测试机验证。
 
 ---
 
-## 获取仓库（三选一）
+## 获取仓库（四选一）
 
 | 源 | 克隆命令 |
 |---|---|
 | **GitHub** | `git clone https://github.com/WS-CatGirl/github520-deploy.git` |
 | **Gitee** | `git clone https://gitee.com/wscatgirl/github520-deploy.git` |
 | **GitCode** | `git clone https://gitcode.com/WS_CatGirl/github520-deploy.git` |
+| **Codeberg** | `git clone https://codeberg.org/WS_CatGirl/github520-deploy.git` |
 
-> **三个源内容相同，任选一个即可，不要重复克隆。**
+> **四个源内容相同，任选一个即可，不要重复克隆。**
 
 ---
 
 ## 目录
 
-- [获取仓库（三选一）](#获取仓库三选一)
+- [获取仓库（四选一）](#获取仓库四选一)
 - [选择哪个脚本](#选择哪个脚本)
+- [Bootstrap 一键引导](#bootstrap-一键引导)
 - [功能对比](#功能对比)
 - [系统要求](#系统要求)
 - [安装](#安装)
@@ -99,6 +110,41 @@ bash ./install.sh
 >
 > **不要在同一台机器同时安装两个脚本的 timer。** 它们都会修改 `/etc/hosts`，可能互相覆盖。请只选择一个。
 
+## Bootstrap 一键引导
+
+`bootstrap.sh` 适合“先运行一个很小的引导脚本，再选择仓库源”的场景。它不会自动安装软件包，也不会直接修改系统配置。
+
+流程：
+
+```text
+检查 Linux / Bash 4+ / curl / /dev/tty / git
+→ 显示四个仓库源
+→ 用户选择
+→ mktemp 创建临时目录
+→ git clone --depth 1
+→ 检查 install.sh / 两个子脚本
+→ bash install.sh < /dev/tty
+→ 清理临时目录
+```
+
+说明：
+
+- Git 缺失时只打印对应发行版的安装命令，然后退出；不会自动调用包管理器；
+- 默认源是 Gitee，适合国内网络；
+- 四个源分别为 GitHub、Gitee、GitCode、Codeberg；
+- clone 失败会重试 3 次；
+- 脚本使用 `/dev/tty` 读取选择和安装确认，因此兼容 `curl | bash` 的管道模式；
+- 临时目录在结束后自动清理；
+- 建议先下载查看再运行，不要用 `sudo` 直接执行远端脚本。
+
+短链入口计划为：
+
+```text
+https://get.whitesocks-crs.top
+```
+
+> 该域名入口会在 DNS 和静态托管配置完成后启用；当前可以先运行仓库里的 `bootstrap.sh`。
+
 ## 功能对比
 
 | 项目 | Github520-Arch.sh | github520-deploy.sh |
@@ -133,16 +179,20 @@ bash ./install.sh
   - NetworkManager、systemd-networkd 或 ifupdown
   - systemd-resolved / resolvconf / nscd / dnsmasq
 
+`bootstrap.sh` 另外需要可用的 `/dev/tty`、`git` 和 `curl`；缺少 Git 时只提示安装命令，不自动安装。
+
 `Github520-Arch.sh` 额外要求 `/etc/os-release` 中 `ID=arch`。
 
 ## 安装
 
-使用上方“获取仓库（三选一）”完成克隆后，进入目录并运行统一安装器：
+使用上方“获取仓库（四选一）”完成克隆后，进入目录并运行统一安装器：
 
 ```bash
 cd github520-deploy
 bash ./install.sh
 ```
+
+也可以使用 `bootstrap.sh` 选择仓库源并自动 clone，详见上面的 [Bootstrap 一键引导](#bootstrap-一键引导)。
 
 `install.sh` 会主动请求 sudo、检测系统、显示信息、15 秒确认，然后自动选择并拉起 Arch 或通用脚本；也可以显式运行 `sudo bash ./install.sh`。
 
@@ -251,10 +301,26 @@ Systemd 内部模式：
 
 ## 安装流程
 
+### 可选引导入口 `bootstrap.sh`
+
+```text
+运行 bootstrap.sh
+  ↓
+检查 Linux / Bash / curl / tty / git
+  ↓
+四选一仓库源
+  ↓
+临时目录 + git clone --depth 1
+  ↓
+检查 install.sh 和两个子脚本
+  ↓
+bash install.sh < /dev/tty
+```
+
 ### 统一入口 `install.sh`
 
 ```text
-用户 git clone（三选一）
+用户 git clone（四选一）
   ↓
 bash ./install.sh
   ↓
@@ -461,13 +527,14 @@ sudo github520-deploy --uninstall-completely --force
 ## 安全说明
 
 - `install.sh` 主动请求 sudo，以 root 修改 hosts、网络配置并安装 systemd unit。
+- `bootstrap.sh` 只检查环境、选择源并 clone，不会安装软件包或直接修改系统；建议先查看脚本内容再运行。
 - 子脚本直接执行 `install` 会被拒绝，必须通过 `install.sh` 安装。
 - hosts 内容来自 GitHub520 及第三方 CDN/镜像；脚本校验结构和条目数量，但**没有域名白名单**。
 - 下载仅允许 HTTPS，并拒绝从 HTTPS 跳转到 HTTP。
 - Timer 以 root 执行本地脚本；确保 `/usr/local/bin/github520-arch` 或 `/usr/local/bin/github520-deploy` 归 root 所有且不可被普通用户写入。
 - 脚本不会安装软件包、修改防火墙或 SSH 配置。
 - 两个脚本的 timer 不应当同时启用。
-- 当前为 **Beta v0.4**，请保留快照和备份。
+- 当前为 **Beta v0.4**，请保留快照和备份；`bootstrap.sh` 会在正式使用前检查环境。
 
 ## 常见问题 Q&A
 
@@ -570,7 +637,7 @@ bash ./install.sh
 
 ### Q17: 这是正式版吗？
 
-不是。两个脚本和 `install.sh` 均为 **Beta v0.4**，请先备份并反馈问题。
+不是。`bootstrap.sh`、两个脚本和 `install.sh` 均为 **Beta v0.4**，请先备份并反馈问题。
 
 ### Q18: 为什么直接运行子脚本安装会被拒绝？
 
@@ -595,13 +662,22 @@ bash ./install.sh
 
 # English
 
-This repository contains a unified installer and two GitHub520 hosts managers:
+This repository contains a bootstrap script, a unified installer, and two GitHub520 hosts managers:
 
 | File | Purpose | CLI |
 |---|---|---|
+| **bootstrap.sh** | Bootstrap: checks the environment, selects a source, clones, then calls `install.sh` | — |
 | **install.sh** | Unified installer; detects the platform and launches the right script | — |
 | **Github520-Arch.sh** | Arch Linux (`ID=arch`) | `github520-arch` |
 | **github520-deploy.sh** | Generic Linux (non-Arch, systemd) | `github520-deploy` |
+
+`bootstrap.sh` provides:
+
+- Linux, Bash 4+, curl, `/dev/tty` and git checks
+- Manual-install instructions when git is missing; no automatic package installation
+- Four repository sources (Gitee is the default)
+- Temporary directory + `git clone --depth 1`
+- File checks, then launches `install.sh` through `/dev/tty`
 
 `install.sh` provides:
 
@@ -628,17 +704,18 @@ Both child scripts provide:
 - status, logs, manual refresh, reinstall and uninstall
 - original hosts backup and complete-uninstall restore
 
-> This is not an official GitHub520 project. Both scripts and `install.sh` are **Beta v0.4**.
+> This is not an official GitHub520 project. `bootstrap.sh`, both scripts and `install.sh` are **Beta v0.4**.
 
-## Get the repository (choose one)
+## Get the repository (choose one of four)
 
 | Source | Clone command |
 |---|---|
 | **GitHub** | `git clone https://github.com/WS-CatGirl/github520-deploy.git` |
 | **Gitee** | `git clone https://gitee.com/wscatgirl/github520-deploy.git` |
 | **GitCode** | `git clone https://gitcode.com/WS_CatGirl/github520-deploy.git` |
+| **Codeberg** | `git clone https://codeberg.org/WS_CatGirl/github520-deploy.git` |
 
-> **All three sources contain the same repository. Choose one only; do not clone all three.**
+> **All four sources contain the same repository. Choose one only; do not clone all four.**
 
 ## Which script?
 
@@ -653,6 +730,37 @@ bash ./install.sh
 Direct `sudo ./Github520-Arch.sh install` or `sudo ./github520-deploy.sh install` calls are rejected with a hint to use `install.sh`.
 
 Do **not** enable both timers on the same machine; both modify `/etc/hosts`.
+
+## Bootstrap
+
+`bootstrap.sh` is the small entry point for users who want to select a source and clone without setting up the repository manually. It does not install packages or modify the system directly.
+
+```text
+check Linux / Bash 4+ / curl / /dev/tty / git
+→ show four sources
+→ user selects one
+→ create a temporary directory
+→ git clone --depth 1
+→ check install.sh and both child scripts
+→ bash install.sh < /dev/tty
+→ remove the temporary directory
+```
+
+- If git is missing, it prints distro-specific install commands and exits; it never installs packages automatically.
+- Gitee is the default source.
+- The four sources are GitHub, Gitee, GitCode and Codeberg.
+- Clone failures are retried three times.
+- `/dev/tty` is used for selection and installation so piped usage still works.
+- The temporary clone is removed on exit.
+- Prefer downloading and reviewing the bootstrap before running it instead of piping it directly to a shell.
+
+The planned short URL is:
+
+```text
+https://get.whitesocks-crs.top
+```
+
+> The short URL will be enabled after DNS and static hosting are configured. Until then, use `bootstrap.sh` from the repository.
 
 ## Comparison
 
@@ -684,6 +792,8 @@ Do **not** enable both timers on the same machine; both modify `/etc/hosts`.
 - Optional: NetworkManager, systemd-networkd, ifupdown
 - Optional: systemd-resolved, resolvconf, nscd or dnsmasq
 
+`bootstrap.sh` additionally requires `/dev/tty`, `git` and `curl`; when Git is missing it only prints install commands and does not install it automatically.
+
 `Github520-Arch.sh` additionally requires `ID=arch` in `/etc/os-release`.
 
 ## Install
@@ -694,6 +804,8 @@ After cloning from one of the sources above, enter the directory and run the uni
 cd github520-deploy
 bash ./install.sh
 ```
+
+You can also use `bootstrap.sh` to select a source and clone automatically; see [Bootstrap](#bootstrap) above.
 
 `install.sh` requests sudo, detects the system, shows a summary, asks for confirmation with a 15-second countdown, and then launches the correct script; `sudo bash ./install.sh` also works.
 
@@ -776,10 +888,26 @@ Replace `<cli>` with `github520-arch` or `github520-deploy`:
 
 ## Install flows
 
+### Optional bootstrap entry: `bootstrap.sh`
+
+```text
+run bootstrap.sh
+  ↓
+check Linux / Bash / curl / tty / git
+  ↓
+select one of four sources
+  ↓
+temporary directory + git clone --depth 1
+  ↓
+verify install.sh and child scripts
+  ↓
+bash install.sh < /dev/tty
+```
+
 ### Unified entry: `install.sh`
 
 ```text
-git clone (one of three sources)
+git clone (one of four sources)
   ↓
 bash ./install.sh
   ↓
@@ -905,6 +1033,7 @@ Complete uninstall restores the pre-install hosts, removes CLI/units, logs, back
 ## Security
 
 - `install.sh` requests sudo and runs as root to modify hosts, networking and systemd units.
+- `bootstrap.sh` only checks the environment, selects a source and clones; it does not install packages or modify the system directly. Review it before running.
 - Direct child `install` calls are rejected; installation must go through `install.sh`.
 - Hosts content comes from GitHub520 and third-party mirrors. Structure and entry count are validated, but no domain allowlist is enforced.
 - Downloads are HTTPS-only; redirects from HTTPS to HTTP are refused.
@@ -997,7 +1126,7 @@ bash ./install.sh
 
 ### 17. Is this stable?
 
-No. Both scripts and `install.sh` are **Beta v0.4**. Keep backups and report issues.
+No. `bootstrap.sh`, both scripts and `install.sh` are **Beta v0.4**. Keep backups and report issues.
 
 ### 18. Why is direct child installation rejected?
 
