@@ -23,7 +23,8 @@
 - 第二次猫娘风格欢迎与结束语
 - 再次检测发行版；通用版额外检测 WSL/Docker 与 KVM/QEMU/Hyper-V
 - root/sudo 权限处理
-- Btrfs/snapper 快照
+- Btrfs/snapper 快照（选项 3 可不建快照继续）
+- 彩色启动日志（`[ INFO ]`、`[  OK  ]`、`[ WARN ]`、`[ FAIL ]`、`[ ALERT ]`），非 TTY 与 systemd 模式自动去色
 - 多源 GitHub520 下载与自动回退
 - `/etc/hosts` 备份、更新与恢复
 - 可选静态 IPv4/DNS
@@ -33,7 +34,7 @@
 
 > 本项目不是 GitHub520 官方项目。hosts 内容来自 GitHub520 及其镜像源。
 >
-> `install.sh` 与两个脚本均为 **v0.2 beta**，请先备份并在测试机验证。
+> `install.sh` 与两个脚本均为 **Beta v0.3**，请先备份并在测试机验证。
 
 ---
 
@@ -311,13 +312,16 @@ GitHub520 下载并备份、更新 hosts
 ```text
 1) Snapshot all snapper configs
 2) Snapshot only the @ subvolume (root config)
-3) Do not snapshot (abort deployment)
+3) Continue without a snapshot (requires YES confirmation)
+4) Abort deployment
 ```
 
 - 30 秒实时倒计时；
-- 超时、snapper/btrfs 错误或选择 3 都会中止；
+- 选择 3 后会显示鲜红色 `[ ALERT ]` 警告，并要求在 30 秒内输入全大写 `YES` 并按回车；
+- 超时、snapper/btrfs 错误、拒绝确认或选择 4 都会中止；
+- 选择 3 不创建任何快照，但会继续执行安装；
 - 非 Btrfs 或没有 snapper 配置时自动跳过；
-- 快照发生在写 hosts 和改网络之前。
+- 选择 1/2 时，快照发生在写 hosts 和改网络之前。
 
 ## 网络检测与静态 IP/DNS
 
@@ -446,7 +450,7 @@ sudo github520-deploy --uninstall-completely --force
 - Timer 以 root 执行本地脚本；确保 `/usr/local/bin/github520-arch` 或 `/usr/local/bin/github520-deploy` 归 root 所有且不可被普通用户写入。
 - 脚本不会安装软件包、修改防火墙或 SSH 配置。
 - 两个脚本的 timer 不应当同时启用。
-- 当前为 **v0.2 beta**，请保留快照和备份。
+- 当前为 **Beta v0.3**，请保留快照和备份。
 
 ## 常见问题 Q&A
 
@@ -526,7 +530,7 @@ Arch 版没有单独的 WSL/容器判断，但要求 systemd 和 `/run/systemd/s
 
 ### Q13: 快照菜单超时了？
 
-30 秒内必须选择 1 或 2；选择 3 会主动中止。
+30 秒内必须选择 1 到 4。选择 3 后还需要在 30 秒内输入全大写 `YES` 并按回车；任何一步超时都会中止，不修改 hosts 或网络。
 
 ### Q14: 所有 GitHub520 源都失败？
 
@@ -549,7 +553,7 @@ bash ./install.sh
 
 ### Q17: 这是正式版吗？
 
-不是。两个脚本和 `install.sh` 均为 **v0.2 beta**，请先备份并反馈问题。
+不是。两个脚本和 `install.sh` 均为 **Beta v0.3**，请先备份并反馈问题。
 
 ### Q18: 为什么直接运行子脚本安装会被拒绝？
 
@@ -593,7 +597,8 @@ Both child scripts provide:
 - Second catgirl welcome and final message
 - A second distribution check; the generic script also checks WSL/Docker and KVM/QEMU/Hyper-V
 - root/sudo handling
-- Btrfs/snapper snapshots
+- Btrfs/snapper snapshots (option 3 can continue without one)
+- Colored boot-style logs (`[ INFO ]`, `[  OK  ]`, `[ WARN ]`, `[ FAIL ]`, `[ ALERT ]`), with automatic color removal for non-TTY and systemd output
 - Multiple GitHub520 sources with fallback
 - `/etc/hosts` backup, update and restore
 - Optional static IPv4/DNS
@@ -601,7 +606,7 @@ Both child scripts provide:
 - status, logs, manual refresh, reinstall and uninstall
 - original hosts backup and complete-uninstall restore
 
-> This is not an official GitHub520 project. Both scripts and `install.sh` are **v0.2 beta**.
+> This is not an official GitHub520 project. Both scripts and `install.sh` are **Beta v0.3**.
 
 ## Get the repository (choose one)
 
@@ -811,10 +816,11 @@ Both scripts support:
 ```text
 1) Snapshot all snapper configs
 2) Snapshot only the @ subvolume (root config)
-3) Do not snapshot (abort deployment)
+3) Continue without a snapshot (requires YES confirmation)
+4) Abort deployment
 ```
 
-Timeout, snapper error or option 3 aborts.
+Timeout, snapper error, a rejected confirmation or option 4 aborts. Option 3 continues without creating any snapshot after typing uppercase `YES` and pressing Enter within 30 seconds. For options 1/2, the snapshot is created before hosts and network changes.
 
 ## Network configuration
 
@@ -932,7 +938,7 @@ No. Complete uninstall restores the pre-install hosts. Use `--uninstall` or back
 
 ### 13. Snapshot menu timed out
 
-Choose 1 or 2 within 30 seconds. Option 3 aborts.
+Choose 1 to 4 within 30 seconds. Option 3 also requires typing uppercase `YES` and pressing Enter within 30 seconds; either timeout aborts without changing hosts or networking.
 
 ### 14. All sources failed
 
@@ -955,7 +961,7 @@ bash ./install.sh
 
 ### 17. Is this stable?
 
-No. Both scripts and `install.sh` are **v0.2 beta**. Keep backups and report issues.
+No. Both scripts and `install.sh` are **Beta v0.3**. Keep backups and report issues.
 
 ### 18. Why is direct child installation rejected?
 

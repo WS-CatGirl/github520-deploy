@@ -4,7 +4,7 @@
 #
 # GitHub520 hosts manager for Arch Linux.
 #
-# Version : v0.2-beta
+# Version : v0.3-beta
 # Author  : 白丝小猫娘 (WS-CatGirl)
 #
 # Repositories:
@@ -31,7 +31,7 @@ IFS=$'\n\t'
 umask 022
 export LC_ALL=C
 
-VERSION="v0.2"
+VERSION="v0.3"
 RELEASE_CHANNEL="beta"
 SCRIPT_NAME=${0##*/}
 SELF=""
@@ -81,6 +81,7 @@ HOSTS_ENTRY_COUNT=0
 HOSTS_DOWNLOAD_ENTRIES=0
 SELECTED_HOSTS_URL=""
 SNAPSHOT_DONE="skipped"
+SNAPSHOT_TTY_STATE=""
 NET_BACKUP_DIR=""
 NETWORK_CONFIGURED=0
 BACKEND=""
@@ -108,12 +109,19 @@ RESOLV_BACKUP=""
 DNS_VIA_RESOLVECTL=0
 DNS_VIA_RESOLVCONF=0
 
-if [ -t 1 ]; then
+_color_enabled() {
+    [ -z "${NO_COLOR:-}" ] &&
+    [ "${TERM:-dumb}" != "dumb" ] &&
+    [ -t "$1" ]
+}
+
+if _color_enabled 1; then
     C_RESET=$'\033[0m'
     C_INFO=$'\033[1;36m'
     C_OK=$'\033[1;32m'
     C_WARN=$'\033[1;33m'
     C_ERR=$'\033[1;31m'
+    C_ALERT=$'\033[1;91m'
     C_PINK=$'\033[1;35m'
 else
     C_RESET=""
@@ -121,7 +129,24 @@ else
     C_OK=""
     C_WARN=""
     C_ERR=""
+    C_ALERT=""
     C_PINK=""
+fi
+
+if _color_enabled 2; then
+    C_RESET_ERR=$'\033[0m'
+    C_INFO_ERR=$'\033[1;36m'
+    C_OK_ERR=$'\033[1;32m'
+    C_WARN_ERR=$'\033[1;33m'
+    C_FAIL_ERR=$'\033[1;31m'
+    C_ALERT_ERR=$'\033[1;91m'
+else
+    C_RESET_ERR=""
+    C_INFO_ERR=""
+    C_OK_ERR=""
+    C_WARN_ERR=""
+    C_FAIL_ERR=""
+    C_ALERT_ERR=""
 fi
 
 # -----------------------------------------------------------------------------
@@ -129,29 +154,63 @@ fi
 # -----------------------------------------------------------------------------
 _log_line() {
     local level=$1
-    shift
+    local fd=$2
+    local label color reset
+    shift 2
+
+    case "$level" in
+        INFO) label=" INFO " ;;
+        OK) label="  OK  " ;;
+        WARN) label=" WARN " ;;
+        FAIL) label=" FAIL " ;;
+        ALERT) label=" ALERT " ;;
+        *) label=" INFO " ;;
+    esac
+
+    if [ "$fd" -eq 2 ]; then
+        reset=$C_RESET_ERR
+        case "$level" in
+            INFO) color=$C_INFO_ERR ;;
+            OK) color=$C_OK_ERR ;;
+            WARN) color=$C_WARN_ERR ;;
+            FAIL) color=$C_FAIL_ERR ;;
+            ALERT) color=$C_ALERT_ERR ;;
+            *) color=$C_INFO_ERR ;;
+        esac
+    else
+        reset=$C_RESET
+        case "$level" in
+            INFO) color=$C_INFO ;;
+            OK) color=$C_OK ;;
+            WARN) color=$C_WARN ;;
+            FAIL) color=$C_ERR ;;
+            ALERT) color=$C_ALERT ;;
+            *) color=$C_INFO ;;
+        esac
+    fi
 
     if [ "$UPDATE_MODE" -eq 1 ]; then
-        printf '[%s] [%s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S')" "$level" "$*"
+        printf '[%s] [%s] %s\n' \
+            "$(date '+%Y-%m-%d %H:%M:%S')" "$label" "$*" >&"$fd"
     else
-        printf '[%s] %s\n' "$level" "$*"
+        printf '%s[%s]%s %s\n' "$color" "$label" "$reset" "$*" >&"$fd"
     fi
 }
 
 log() {
-    _log_line INFO "$*"
+    _log_line INFO 1 "$*"
 }
 
 ok() {
-    _log_line OK "$*"
+    _log_line OK 1 "$*"
 }
 
 warn() {
-    _log_line WARN "$*" >&2
+    _log_line WARN 2 "$*"
 }
 
 err() {
-    _log_line FAIL "$*" >&2
+    _log_line FAIL 2 "$*"
 }
 
 die() {
@@ -159,7 +218,7 @@ die() {
     # In systemd mode stdout/stderr already go to UPDATE_LOG; only manual
     # updates need an explicit log entry.
     if [ "$MANUAL_UPDATE" -eq 1 ] && [ "$UPDATE_MODE" -ne 1 ]; then
-        append_update_log "[FAIL] ${*}"
+        append_update_log "[ FAIL ] ${*}"
     fi
     exit 1
 }
@@ -334,6 +393,11 @@ parse_args() {
 cleanup() {
     local rc=$?
     trap - ERR
+
+    if [ -n "${SNAPSHOT_TTY_STATE:-}" ]; then
+        stty "$SNAPSHOT_TTY_STATE" 2>/dev/null || true
+        SNAPSHOT_TTY_STATE=""
+    fi
 
     if [ "${NETWORK_ROLLBACK_PENDING:-0}" -eq 1 ]; then
         NETWORK_ROLLBACK_PENDING=0
@@ -529,6 +593,79 @@ snapshot_root_config() {
     SNAPSHOT_DONE="root subvolume (@) via snapper config '$root_cfg'"
 }
 
+confirm_no_snapshot() {
+    local state answer="" key rc remaining
+
+    require_tty
+
+    printf '\n%s' "$C_ALERT"
+    cat <<'EOF'
+[ ALERT ] NO SNAPSHOT WILL BE CREATED.
+Continuing without a Btrfs snapshot means there is no rollback point
+for /etc/hosts, network settings, or the installed timer.
+Type YES (uppercase) and press Enter within 30 seconds to continue.
+Press Ctrl-C to cancel.
+EOF
+    printf '%s' "$C_RESET"
+
+    state=$(stty -g 2>/dev/null) || die "Unable to read the terminal settings."
+    SNAPSHOT_TTY_STATE=$state
+    if ! stty -icanon -echo; then
+        SNAPSHOT_TTY_STATE=""
+        die "Unable to configure the terminal for the confirmation."
+    fi
+
+    deadline=$((SECONDS + SNAPSHOT_TIMEOUT))
+    while true; do
+        remaining=$((deadline - SECONDS))
+        if [ "$remaining" -le 0 ]; then
+            printf '\n'
+            stty "$state" 2>/dev/null || true
+            SNAPSHOT_TTY_STATE=""
+            die "No confirmation within ${SNAPSHOT_TIMEOUT} seconds; deployment cancelled."
+        fi
+
+        printf '\r[%2ds] Type YES (uppercase) and press Enter: %-3s' "$remaining" "$answer"
+
+        rc=0
+        if IFS= read -r -n 1 -t 1 key; then
+            case "$key" in
+                $'\177'|$'\b') answer=${answer%?} ;;
+                $'\n'|$'\r'|'')
+                    if [ "$answer" = "YES" ]; then
+                        printf '\r%*s\r' 80 ''
+                        drain_tty
+                        stty "$state" 2>/dev/null || true
+                        SNAPSHOT_TTY_STATE=""
+                        printf '\n'
+                        warn "No snapshot will be created; continuing without a rollback point."
+                        return 0
+                    fi
+                    answer=""
+                    printf '\r%*s\r' 80 ''
+                    warn "Confirmation must be exactly YES (uppercase)."
+                    ;;
+                [A-Za-z]) answer+=$key ;;
+                *) : ;;
+            esac
+
+            if [ "${#answer}" -gt 3 ]; then
+                answer=""
+                printf '\r%*s\r' 80 ''
+                warn "Confirmation must be exactly YES (uppercase)."
+            fi
+        else
+            rc=$?
+            if [ "$rc" -le 128 ]; then
+                printf '\n'
+                stty "$state" 2>/dev/null || true
+                SNAPSHOT_TTY_STATE=""
+                die "Failed to read the confirmation."
+            fi
+        fi
+    done
+}
+
 read_snapshot_choice() {
     local deadline choice="" rc remaining
 
@@ -537,7 +674,8 @@ read_snapshot_choice() {
     printf '\nSnapshot options (Btrfs with snapper detected):\n'
     printf '  1) Snapshot all snapper configs\n'
     printf '  2) Snapshot only the @ subvolume (root config)\n'
-    printf '  3) Do not snapshot (abort deployment)\n'
+    printf '  3) Continue without a snapshot (requires YES confirmation)\n'
+    printf '  4) Abort deployment\n'
 
     deadline=$((SECONDS + SNAPSHOT_TIMEOUT))
     while true; do
@@ -546,14 +684,14 @@ read_snapshot_choice() {
             printf '\r%*s\r' 60 ''
             die "Snapshot selection timed out after ${SNAPSHOT_TIMEOUT} seconds."
         fi
-        printf '\r[%2ds] Select 1, 2 or 3: ' "$remaining"
+        printf '\r[%2ds] Select 1, 2, 3 or 4: ' "$remaining"
 
         rc=0
         if IFS= read -r -t 1 choice; then
             printf '\r%*s\r' 60 ''
             choice=${choice//[[:space:]]/}
             case "$choice" in
-                1|2|3)
+                1|2|3|4)
                     printf 'Selection: %s\n' "$choice"
                     SNAPSHOT_CHOICE=$choice
                     return 0
@@ -561,7 +699,7 @@ read_snapshot_choice() {
                 '')
                     ;;
                 *)
-                    warn "Invalid selection '$choice'; enter 1, 2 or 3."
+                    warn "Invalid selection '$choice'; enter 1, 2, 3 or 4."
                     ;;
             esac
         else
@@ -571,6 +709,12 @@ read_snapshot_choice() {
                 die "Failed to read the snapshot selection."
             fi
         fi
+    done
+}
+
+drain_tty() {
+    while IFS= read -r -n 1 -t 0.05 _ 2>/dev/null; do
+        :
     done
 }
 
@@ -654,7 +798,12 @@ detect_filesystem_and_snapshot() {
     case "$SNAPSHOT_CHOICE" in
         1) snapshot_all_configs "$cfg_csv" ;;
         2) snapshot_root_config "$cfg_csv" ;;
-        3) die "No snapshot was requested; aborting deployment." ;;
+        3)
+            confirm_no_snapshot
+            SNAPSHOT_DONE="skipped by user (no snapshot)"
+            return 0
+            ;;
+        4) die "Deployment cancelled by user." ;;
         *) die "Invalid snapshot selection." ;;
     esac
     SNAPSHOT_CHOICE=""
@@ -1781,7 +1930,7 @@ EOF
     systemctl is-active --quiet "$TIMER_NAME" || die "$TIMER_NAME is not active."
 
     ensure_dir "$LOG_DIR" 0755
-    printf '[%s] [INFO] Timer installed and enabled (hourly updates).\n' \
+    printf '[%s] [ INFO ] Timer installed and enabled (hourly updates).\n' \
         "$(date '+%Y-%m-%d %H:%M:%S')" >> "$UPDATE_LOG"
     chmod 0644 "$UPDATE_LOG" 2>/dev/null || true
 
@@ -2060,26 +2209,32 @@ init_update_log() {
 }
 
 run_install() {
+    log "Starting installation workflow."
     TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/github520-arch.XXXXXX") || \
         die "Failed to create a temporary directory."
     log "Temporary workspace: $TMP_DIR"
 
     ensure_original_hosts_backup
 
+    log "Checking filesystem and snapshot options."
     detect_filesystem_and_snapshot
+    log "Checking network configuration."
     detect_network_backends
     if ! detect_default_route; then
         log "Static network configuration will be skipped."
     fi
 
+    log "Preparing GitHub520 hosts data."
     acquire_update_lock
     prepare_github520_download
     fetch_hosts_block
     build_new_hosts
+    log "Applying hosts changes and DNS settings."
     install_new_hosts
     release_update_lock
     flush_dns_caches
 
+    log "Configuring optional network changes and the update timer."
     ask_network_change
     install_timer
 
@@ -2088,13 +2243,14 @@ run_install() {
         TMP_DIR=""
     fi
 
+    log "Installation workflow finished."
     print_final_summary
 }
 
 run_manual_update() {
     MANUAL_UPDATE=1
     ensure_dir "$LOG_DIR" 0755
-    append_update_log "[INFO] Manual update started."
+    append_update_log "[ INFO ] Manual update started."
 
     TMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/github520-arch-update.XXXXXX") || \
         die "Failed to create a temporary directory."
@@ -2103,7 +2259,7 @@ run_manual_update() {
     apply_hosts_update
     flush_dns_caches
 
-    append_update_log "[ OK ] Manual update succeeded (source=${SELECTED_HOSTS_URL}, entries=${HOSTS_ENTRY_COUNT})."
+    append_update_log "[  OK  ] Manual update succeeded (source=${SELECTED_HOSTS_URL}, entries=${HOSTS_ENTRY_COUNT})."
     ok "Manual update completed. Hosts entries: $HOSTS_ENTRY_COUNT"
 }
 
@@ -2118,7 +2274,7 @@ run_update_mode() {
     apply_hosts_update
     flush_dns_caches
 
-    printf '[%s] [ OK ] GitHub520 hourly update succeeded.\n' "$(date '+%Y-%m-%d %H:%M:%S')"
+    printf '[%s] [  OK  ] GitHub520 hourly update succeeded.\n' "$(date '+%Y-%m-%d %H:%M:%S')"
     exit 0
 }
 

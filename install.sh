@@ -15,7 +15,7 @@
 # its own platform/container/VM checks again, so the original welcome and
 # error messages stay unchanged.
 #
-# Version : v0.2-beta
+# Version : v0.3-beta
 # Author  : 白丝小猫娘 (WS-CatGirl)
 # =============================================================================
 
@@ -24,7 +24,7 @@ IFS=$'\n\t'
 umask 022
 export LC_ALL=C
 
-VERSION="v0.2"
+VERSION="v0.3"
 RELEASE_CHANNEL="beta"
 SCRIPT_NAME=${0##*/}
 SELF=""
@@ -40,12 +40,19 @@ ARCH_LABEL=""
 SYSTEMD_STATE="no"
 STTY_STATE=""
 
-if [ -t 1 ]; then
+_color_enabled() {
+    [ -z "${NO_COLOR:-}" ] &&
+    [ "${TERM:-dumb}" != "dumb" ] &&
+    [ -t "$1" ]
+}
+
+if _color_enabled 1; then
     C_RESET=$'\033[0m'
     C_INFO=$'\033[1;36m'
     C_OK=$'\033[1;32m'
     C_WARN=$'\033[1;33m'
     C_ERR=$'\033[1;31m'
+    C_ALERT=$'\033[1;91m'
     C_PINK=$'\033[1;35m'
 else
     C_RESET=""
@@ -53,23 +60,34 @@ else
     C_OK=""
     C_WARN=""
     C_ERR=""
+    C_ALERT=""
     C_PINK=""
 fi
 
+if _color_enabled 2; then
+    C_RESET_ERR=$'\033[0m'
+    C_WARN_ERR=$'\033[1;33m'
+    C_FAIL_ERR=$'\033[1;31m'
+else
+    C_RESET_ERR=""
+    C_WARN_ERR=""
+    C_FAIL_ERR=""
+fi
+
 log() {
-    printf '[INFO] %s\n' "$*"
+    printf '%s[ INFO ]%s %s\n' "$C_INFO" "$C_RESET" "$*"
 }
 
 ok() {
-    printf '%s[ OK ]%s %s\n' "$C_OK" "$C_RESET" "$*"
+    printf '%s[  OK  ]%s %s\n' "$C_OK" "$C_RESET" "$*"
 }
 
 warn() {
-    printf '%s[WARN]%s %s\n' "$C_WARN" "$C_RESET" "$*" >&2
+    printf '%s[ WARN ]%s %s\n' "$C_WARN_ERR" "$C_RESET_ERR" "$*" >&2
 }
 
 err() {
-    printf '%s[FAIL]%s %s\n' "$C_ERR" "$C_RESET" "$*" >&2
+    printf '%s[ FAIL ]%s %s\n' "$C_FAIL_ERR" "$C_RESET_ERR" "$*" >&2
 }
 
 die() {
@@ -354,13 +372,17 @@ main() {
     require_root "$@"
 
     show_welcome
+    log "Detecting platform."
     detect_platform
+    ok "Platform detection complete: $OS_NAME ($ARCH_LABEL)."
     show_info
 
+    log "Waiting for installation confirmation (15-second timeout)."
     if ! confirm_install; then
         log "Installation cancelled."
         exit 0
     fi
+    ok "Installation confirmed."
 
     check_script
     launch_child
