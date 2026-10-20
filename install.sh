@@ -15,7 +15,7 @@
 # its own platform/container/VM checks again, so the original welcome and
 # error messages stay unchanged.
 #
-# Version : v0.4-beta
+# Version : v0.5-beta
 # Author  : 白丝小猫娘 (WS-CatGirl)
 # =============================================================================
 
@@ -24,7 +24,7 @@ IFS=$'\n\t'
 umask 022
 export LC_ALL=C
 
-VERSION="v0.4"
+VERSION="v0.5"
 RELEASE_CHANNEL="beta"
 SCRIPT_NAME=${0##*/}
 SELF=""

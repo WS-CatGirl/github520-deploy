@@ -2,6 +2,8 @@
 # =============================================================================
 # bootstrap.sh
 #
+# Version : v0.5-beta
+#
 # Small bootstrap entry point for github520-deploy.
 #
 # It does not install packages. It checks the environment, lets the user pick

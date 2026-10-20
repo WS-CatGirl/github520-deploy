@@ -42,9 +42,13 @@
 - 状态、日志、手动刷新、重装、卸载
 - 原始 hosts 备份与完整卸载恢复
 
-> 本项目不是 GitHub520 官方项目。hosts 内容来自 GitHub520 及其镜像源。
+> **非官方声明**：本项目是独立的第三方工具，不是 GitHub520 官方项目，与 [521xueweihan/GitHub520](https://github.com/521xueweihan/GitHub520) 及其作者没有隶属、合作或背书关系。
 >
-> `bootstrap.sh`、`install.sh` 与两个脚本均为 **Beta v0.4**，请先备份并在测试机验证。
+> **上游许可证**：核查时，上游 GitHub520 仓库没有 `LICENSE` 文件，GitHub API 的 `license` 字段为 `null`。因此**不能将上游项目视为 MIT 或任何开源许可证下的项目**；上游代码和内容的权利归原作者，复用、修改或再分发前请先取得授权。
+>
+> **本项目范围**：仓库不包含上游源码或 hosts 文件；脚本仅在运行时通过 HTTPS 从上游及镜像下载 hosts 数据。本项目自身代码采用 MIT 许可证，见 [LICENSE](LICENSE)，该许可证不覆盖上游项目或其内容。
+>
+> `bootstrap.sh`、`install.sh` 与两个脚本均为 **Beta v0.5**，请先备份并在测试机验证。
 
 ---
 
@@ -78,6 +82,7 @@
 - [日志与备份](#日志与备份)
 - [卸载](#卸载)
 - [安全说明](#安全说明)
+- [许可证与上游声明](#许可证与上游声明)
 - [常见问题 Q&A](#常见问题-qa)
 - [English](#english)
 
@@ -137,13 +142,13 @@ bash ./install.sh
 - 临时目录在结束后自动清理；
 - 建议先下载查看再运行，不要用 `sudo` 直接执行远端脚本。
 
-短链入口计划为：
+短链入口：
 
 ```text
-https://get.whitesocks-crs.top
+https://get.whitesocks-crs.top/bootstrap.sh
 ```
 
-> 该域名入口会在 DNS 和静态托管配置完成后启用；当前可以先运行仓库里的 `bootstrap.sh`。
+> Pages 默认域名和 `get.whitesocks-crs.top` 自定义域名均已验证，返回同一份脚本。
 
 ## 功能对比
 
@@ -534,7 +539,29 @@ sudo github520-deploy --uninstall-completely --force
 - Timer 以 root 执行本地脚本；确保 `/usr/local/bin/github520-arch` 或 `/usr/local/bin/github520-deploy` 归 root 所有且不可被普通用户写入。
 - 脚本不会安装软件包、修改防火墙或 SSH 配置。
 - 两个脚本的 timer 不应当同时启用。
-- 当前为 **Beta v0.4**，请保留快照和备份；`bootstrap.sh` 会在正式使用前检查环境。
+- 当前为 **Beta v0.5**，请保留快照和备份；`bootstrap.sh` 会在正式使用前检查环境。
+
+## 许可证与上游声明
+
+### 本项目
+
+本仓库的脚本、`install.sh`、`bootstrap.sh` 和文档由 **白丝小猫娘 (WS-CatGirl)** 编写，采用 **MIT License**，完整文本见 [LICENSE](LICENSE)。
+
+该 MIT 许可证只覆盖本仓库自身的代码和文档，**不覆盖** GitHub520 上游项目、其代码或其 hosts 内容。
+
+### GitHub520 上游
+
+- 上游仓库：[521xueweihan/GitHub520](https://github.com/521xueweihan/GitHub520)
+- 核查时，上游仓库**没有 `LICENSE` 文件**，GitHub API 的 `license` 字段为 `null`；
+- 因此不能把上游项目描述为 MIT 或其他开源许可证项目；上游代码和内容的权利归原作者，默认保留相关权利；
+- 如需复用、修改或再分发上游代码或内容，请先联系上游作者取得明确授权；
+- 本项目是独立的第三方工具，**不是 GitHub520 官方项目**，与上游作者没有隶属、合作或背书关系。
+
+### 数据获取方式
+
+本仓库不包含上游源码或 hosts 文件。脚本仅在运行时通过 HTTPS 从 GitHub520 及第三方镜像下载 hosts 数据，用于更新本机 `/etc/hosts`。
+
+> 以上为仓库状态说明，不构成法律意见；涉及再分发或商业使用时请自行确认授权。
 
 ## 常见问题 Q&A
 
@@ -637,7 +664,7 @@ bash ./install.sh
 
 ### Q17: 这是正式版吗？
 
-不是。`bootstrap.sh`、两个脚本和 `install.sh` 均为 **Beta v0.4**，请先备份并反馈问题。
+不是。`bootstrap.sh`、两个脚本和 `install.sh` 均为 **Beta v0.5**，请先备份并反馈问题。
 
 ### Q18: 为什么直接运行子脚本安装会被拒绝？
 
@@ -704,7 +731,13 @@ Both child scripts provide:
 - status, logs, manual refresh, reinstall and uninstall
 - original hosts backup and complete-uninstall restore
 
-> This is not an official GitHub520 project. `bootstrap.sh`, both scripts and `install.sh` are **Beta v0.4**.
+> **Unofficial notice**: This is an independent third-party tool. It is not an official GitHub520 project and has no affiliation, partnership or endorsement relationship with [521xueweihan/GitHub520](https://github.com/521xueweihan/GitHub520) or its author.
+>
+> **Upstream license**: At the time of review, the upstream GitHub520 repository has no `LICENSE` file and the GitHub API `license` field is `null`. The upstream project must therefore **not** be treated as MIT-licensed or as an open-source-licensed project. Rights to upstream code and content remain with its author; obtain permission before reusing, modifying or redistributing it.
+>
+> **Scope of this project**: This repository does not bundle upstream source code or the hosts file. The scripts only download hosts data at runtime over HTTPS from upstream and mirrors. This project's own code is MIT-licensed; see [LICENSE](LICENSE). That license does not cover the upstream project or its content.
+>
+> `bootstrap.sh`, both scripts and `install.sh` are **Beta v0.5**.
 
 ## Get the repository (choose one of four)
 
@@ -754,13 +787,13 @@ check Linux / Bash 4+ / curl / /dev/tty / git
 - The temporary clone is removed on exit.
 - Prefer downloading and reviewing the bootstrap before running it instead of piping it directly to a shell.
 
-The planned short URL is:
+The short URL is:
 
 ```text
-https://get.whitesocks-crs.top
+https://get.whitesocks-crs.top/bootstrap.sh
 ```
 
-> The short URL will be enabled after DNS and static hosting are configured. Until then, use `bootstrap.sh` from the repository.
+> Both the Pages project URL and the `get.whitesocks-crs.top` custom domain have been verified to return the same bootstrap script.
 
 ## Comparison
 
@@ -1041,6 +1074,28 @@ Complete uninstall restores the pre-install hosts, removes CLI/units, logs, back
 - Do not enable both timers on the same machine.
 - Beta software: keep snapshots and backups.
 
+## License and upstream notice
+
+### This project
+
+The scripts, `install.sh`, `bootstrap.sh` and documentation in this repository are written by **白丝小猫娘 (WS-CatGirl)** and licensed under the **MIT License**; see [LICENSE](LICENSE) for the full text.
+
+That MIT license covers only this repository's own code and documentation. It does **not** cover the upstream GitHub520 project, its code, or its hosts content.
+
+### Upstream GitHub520
+
+- Upstream repository: [521xueweihan/GitHub520](https://github.com/521xueweihan/GitHub520)
+- At the time of review, the upstream repository has **no `LICENSE` file**, and the GitHub API `license` field is `null`;
+- The upstream project therefore must not be described as MIT-licensed or as an open-source-licensed project; rights to its code and content remain with its author;
+- Obtain explicit permission from the upstream author before reusing, modifying or redistributing upstream code or content;
+- This project is an independent third-party tool, **not an official GitHub520 project**, and has no affiliation, partnership or endorsement relationship with the upstream author.
+
+### How data is obtained
+
+This repository does not bundle upstream source code or the hosts file. The scripts only download hosts data at runtime over HTTPS from GitHub520 and third-party mirrors, then use it to update the local `/etc/hosts`.
+
+> This is a repository-status notice, not legal advice. Confirm authorization yourself before redistribution or commercial use.
+
 ## FAQ
 
 ### 1. Which script should I use?
@@ -1126,7 +1181,7 @@ bash ./install.sh
 
 ### 17. Is this stable?
 
-No. `bootstrap.sh`, both scripts and `install.sh` are **Beta v0.4**. Keep backups and report issues.
+No. `bootstrap.sh`, both scripts and `install.sh` are **Beta v0.5**. Keep backups and report issues.
 
 ### 18. Why is direct child installation rejected?
 
