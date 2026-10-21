@@ -64,6 +64,19 @@
 
 ---
 
+## 推荐使用短链：一键引导
+
+如果不想手动 `git clone`，推荐直接使用短链。短链返回仓库中的 `bootstrap.sh`，由它检查环境、让你选择仓库源并自动 clone，然后调用 `install.sh`：
+
+```bash
+curl -fsSL https://get.whitesocks-crs.top/bootstrap.sh -o bootstrap.sh
+bash bootstrap.sh
+```
+
+> 短链只负责下载引导脚本，不会自动安装软件包；建议先查看 `bootstrap.sh` 内容再执行。
+
+---
+
 ## 获取仓库（四选一）
 
 | 源 | 克隆命令 |
@@ -81,6 +94,7 @@
 
 ## 目录
 
+- [推荐使用短链：一键引导](#推荐使用短链一键引导)
 - [获取仓库（四选一）](#获取仓库四选一)
 - [选择哪个脚本](#选择哪个脚本)
 - [Bootstrap 一键引导](#bootstrap-一键引导)
@@ -795,6 +809,17 @@ The shared core behind both platform entries provides:
 > **Release status**: The current version is **v1.0-milestone.2** (milestone 2), preparing for the RC phase. **Stable v1.0** is expected on **2026-10-25**. Behaviour may still change before RC; keep backups.
 >
 > `bootstrap.sh`, both scripts and `install.sh` are **v1.0-milestone.2**.
+
+## Recommended: short URL
+
+If you do not want to clone the repository manually, use the short URL. It serves the repository's `bootstrap.sh`, which checks the environment, lets you choose a source, clones the repository and then calls `install.sh`:
+
+```bash
+curl -fsSL https://get.whitesocks-crs.top/bootstrap.sh -o bootstrap.sh
+bash bootstrap.sh
+```
+
+> The short URL only downloads the bootstrap script; it does not install packages automatically. Review `bootstrap.sh` before running it.
 
 ## Get the repository (choose one of four)
 
