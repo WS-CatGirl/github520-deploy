@@ -48,6 +48,8 @@
 >
 > **本项目范围**：仓库不包含上游源码或 hosts 文件；脚本仅在运行时通过 HTTPS 从上游及镜像下载 hosts 数据。本项目自身代码采用 MIT 许可证，见 [LICENSE](LICENSE)，该许可证不覆盖上游项目或其内容。
 >
+> **AI 辅助声明**：本项目在编写过程中使用了 AI 编程助手；AI 生成内容不会自动发布，最终版本由维护者审阅后决定。详见 [AI 辅助开发声明](#ai-辅助开发声明)。
+>
 > `bootstrap.sh`、`install.sh` 与两个脚本均为 **Beta v0.6**，请先备份并在测试机验证。
 
 ---
@@ -84,6 +86,7 @@
 - [日志与备份](#日志与备份)
 - [卸载](#卸载)
 - [安全说明](#安全说明)
+- [AI 辅助开发声明](#ai-辅助开发声明)
 - [许可证与上游声明](#许可证与上游声明)
 - [常见问题 Q&A](#常见问题-qa)
 - [English](#english)
@@ -546,11 +549,23 @@ sudo github520-deploy --uninstall-completely --force
 - 两个脚本的 timer 不应当同时启用。
 - 当前为 **Beta v0.6**，请保留快照和备份；`bootstrap.sh` 会在正式使用前检查环境。
 
+## AI 辅助开发声明
+
+本项目的代码、脚本注释和文档在编写过程中使用了 AI 编程助手，包括生成草稿、代码片段和文字润色。AI 生成内容不会自动发布；是否合并、修改和发布由维护者决定，最终版本经过维护者人工审阅，并在条件允许时进行了实际测试。
+
+需要明确的是：
+
+- 本项目按 **“现状”（AS IS）** 提供，不附带任何明示或暗示的担保，包括但不限于适销性、特定用途适用性和不侵权；
+- AI 辅助内容可能存在错误、遗漏、潜在安全问题、过时信息，或与你的发行版、硬件、网络环境不兼容；使用前请自行阅读脚本、备份数据，并在测试环境中验证；
+- 因使用、修改或分发本项目而产生的任何直接或间接损失，作者及贡献者在适用法律允许的范围内不承担责任；
+- 本项目不是 GitHub520 官方项目，与上游作者没有隶属、合作或背书关系；上游代码和 hosts 内容的权利归其原作者，详见下文 [许可证与上游声明](#许可证与上游声明)；
+- 本声明不改变本项目自身代码的 MIT 许可证，也不构成法律意见。
+
 ## 许可证与上游声明
 
 ### 本项目
 
-本仓库的脚本、`install.sh`、`bootstrap.sh` 和文档由 **白丝小猫娘 (WS-CatGirl)** 编写，采用 **MIT License**，完整文本见 [LICENSE](LICENSE)。
+本仓库的脚本、`install.sh`、`bootstrap.sh` 和文档由 **白丝小猫娘 (WS-CatGirl)** 维护并发布，采用 **MIT License**，完整文本见 [LICENSE](LICENSE)。
 
 该 MIT 许可证只覆盖本仓库自身的代码和文档，**不覆盖** GitHub520 上游项目、其代码或其 hosts 内容。
 
@@ -741,6 +756,8 @@ Both child scripts provide:
 > **Upstream license**: At the time of review, the upstream GitHub520 repository has no `LICENSE` file and the GitHub API `license` field is `null`. The upstream project must therefore **not** be treated as MIT-licensed or as an open-source-licensed project. Rights to upstream code and content remain with its author; obtain permission before reusing, modifying or redistributing it.
 >
 > **Scope of this project**: This repository does not bundle upstream source code or the hosts file. The scripts only download hosts data at runtime over HTTPS from upstream and mirrors. This project's own code is MIT-licensed; see [LICENSE](LICENSE). That license does not cover the upstream project or its content.
+>
+> **AI assistance**: AI coding assistants were used during development. AI output is not published automatically; the maintainer reviews released content. See [AI-assisted development disclosure](#ai-assisted-development-disclosure).
 >
 > `bootstrap.sh`, both scripts and `install.sh` are **Beta v0.6**.
 
@@ -1084,11 +1101,23 @@ Complete uninstall restores the pre-install hosts, removes CLI/units, logs, back
 - Do not enable both timers on the same machine.
 - Beta software: keep snapshots and backups.
 
+## AI-assisted development disclosure
+
+AI coding assistants were used while developing this project, including for drafting, code snippets and documentation editing. AI output is not published automatically; the maintainer decides what is merged, changed and released. The final version was reviewed by the maintainer and tested where feasible.
+
+Please note:
+
+- This project is provided **"as is"**, without warranties of any kind, express or implied, including merchantability, fitness for a particular purpose and non-infringement.
+- AI-assisted material may contain errors, omissions, potential security issues, outdated information, or incompatibilities with your distribution, hardware or network setup. Review the scripts, back up your data and test in a safe environment before use.
+- To the maximum extent permitted by applicable law, the author and contributors are not liable for any direct or indirect loss arising from the use, modification or distribution of this project.
+- This is not an official GitHub520 project and has no affiliation, partnership or endorsement relationship with the upstream author. Rights to upstream code and hosts content remain with the original author; see [License and upstream notice](#license-and-upstream-notice) below.
+- This disclosure does not change the MIT License covering this project's own code and is not legal advice.
+
 ## License and upstream notice
 
 ### This project
 
-The scripts, `install.sh`, `bootstrap.sh` and documentation in this repository are written by **白丝小猫娘 (WS-CatGirl)** and licensed under the **MIT License**; see [LICENSE](LICENSE) for the full text.
+The scripts, `install.sh`, `bootstrap.sh` and documentation in this repository are maintained and released by **白丝小猫娘 (WS-CatGirl)** and licensed under the **MIT License**; see [LICENSE](LICENSE) for the full text.
 
 That MIT license covers only this repository's own code and documentation. It does **not** cover the upstream GitHub520 project, its code, or its hosts content.
 
