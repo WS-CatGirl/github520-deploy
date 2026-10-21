@@ -2,7 +2,7 @@
 # =============================================================================
 # bootstrap.sh
 #
-# Version : v0.5-beta
+# Version : v0.6-beta
 #
 # Small bootstrap entry point for github520-deploy.
 #
@@ -218,21 +218,50 @@ check_repository_files() {
     ok "Repository files verified."
 }
 
+prompt_reselect_source() {
+    local choice=""
+
+    while true; do
+        printf '\nClone failed after 3 attempts.\n'
+        printf '  [r] Select another repository source\n'
+        printf '  [q] Quit\n'
+        printf 'Choice [r/q]: '
+
+        if ! IFS= read -r choice < /dev/tty; then
+            die "Failed to read the repository selection."
+        fi
+
+        choice=${choice//[[:space:]]/}
+        case "${choice,,}" in
+            r|reselect) return 0 ;;
+            q|quit) return 1 ;;
+            *) warn "Enter r or q." ;;
+        esac
+    done
+}
+
 main() {
     require_linux
     require_bash
     require_curl
     require_tty
     require_git
-    select_source
 
     WORKDIR=$(mktemp -d "${TMPDIR:-/tmp}/github520-bootstrap.XXXXXX") || \
         die "Failed to create a temporary directory."
     REPO_DIR="$WORKDIR/repo"
 
-    if ! clone_repository; then
-        die "Could not clone the repository after 3 attempts."
-    fi
+    while true; do
+        select_source
+        if clone_repository; then
+            break
+        fi
+
+        warn "Could not clone the repository after 3 attempts."
+        if ! prompt_reselect_source; then
+            die "Installation cancelled by user."
+        fi
+    done
 
     check_repository_files
 

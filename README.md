@@ -48,7 +48,7 @@
 >
 > **本项目范围**：仓库不包含上游源码或 hosts 文件；脚本仅在运行时通过 HTTPS 从上游及镜像下载 hosts 数据。本项目自身代码采用 MIT 许可证，见 [LICENSE](LICENSE)，该许可证不覆盖上游项目或其内容。
 >
-> `bootstrap.sh`、`install.sh` 与两个脚本均为 **Beta v0.5**，请先备份并在测试机验证。
+> `bootstrap.sh`、`install.sh` 与两个脚本均为 **Beta v0.6**，请先备份并在测试机验证。
 
 ---
 
@@ -129,6 +129,8 @@ bash ./install.sh
 → 用户选择
 → mktemp 创建临时目录
 → git clone --depth 1
+   ├─ 成功 → 检查文件
+   └─ 3 次失败 → [r] 重选源 / [q] 退出
 → 检查 install.sh / 两个子脚本
 → bash install.sh < /dev/tty
 → 清理临时目录
@@ -139,7 +141,7 @@ bash ./install.sh
 - Git 缺失时只打印对应发行版的安装命令，然后退出；不会自动调用包管理器；
 - 默认源是 GitCode，适合国内网络；Gitee 的 HTTPS clone 可能要求登录；
 - 四个源分别为 GitHub、Gitee、GitCode、Codeberg；
-- clone 失败会重试 3 次；
+- clone 失败会重试 3 次；仍失败时可 `[r]` 重新选择仓库源，或 `[q]` 退出；
 - 脚本使用 `/dev/tty` 读取选择和安装确认，因此兼容 `curl | bash` 的管道模式；
 - 临时目录在结束后自动清理；
 - 建议先下载查看再运行，不要用 `sudo` 直接执行远端脚本。
@@ -541,7 +543,7 @@ sudo github520-deploy --uninstall-completely --force
 - Timer 以 root 执行本地脚本；确保 `/usr/local/bin/github520-arch` 或 `/usr/local/bin/github520-deploy` 归 root 所有且不可被普通用户写入。
 - 脚本不会安装软件包、修改防火墙或 SSH 配置。
 - 两个脚本的 timer 不应当同时启用。
-- 当前为 **Beta v0.5**，请保留快照和备份；`bootstrap.sh` 会在正式使用前检查环境。
+- 当前为 **Beta v0.6**，请保留快照和备份；`bootstrap.sh` 会在正式使用前检查环境。
 
 ## 许可证与上游声明
 
@@ -666,7 +668,7 @@ bash ./install.sh
 
 ### Q17: 这是正式版吗？
 
-不是。`bootstrap.sh`、两个脚本和 `install.sh` 均为 **Beta v0.5**，请先备份并反馈问题。
+不是。`bootstrap.sh`、两个脚本和 `install.sh` 均为 **Beta v0.6**，请先备份并反馈问题。
 
 ### Q18: 为什么直接运行子脚本安装会被拒绝？
 
@@ -739,7 +741,7 @@ Both child scripts provide:
 >
 > **Scope of this project**: This repository does not bundle upstream source code or the hosts file. The scripts only download hosts data at runtime over HTTPS from upstream and mirrors. This project's own code is MIT-licensed; see [LICENSE](LICENSE). That license does not cover the upstream project or its content.
 >
-> `bootstrap.sh`, both scripts and `install.sh` are **Beta v0.5**.
+> `bootstrap.sh`, both scripts and `install.sh` are **Beta v0.6**.
 
 ## Get the repository (choose one of four)
 
@@ -778,6 +780,8 @@ check Linux / Bash 4+ / curl / /dev/tty / git
 → user selects one
 → create a temporary directory
 → git clone --depth 1
+   ├─ success → check files
+   └─ 3 failures → [r] select another source / [q] quit
 → check install.sh and both child scripts
 → bash install.sh < /dev/tty
 → remove the temporary directory
@@ -786,7 +790,7 @@ check Linux / Bash 4+ / curl / /dev/tty / git
 - If git is missing, it prints distro-specific install commands and exits; it never installs packages automatically.
 - GitCode is the default source and works anonymously in China; Gitee HTTPS clone may require login.
 - The four sources are GitHub, Gitee, GitCode and Codeberg.
-- Clone failures are retried three times.
+- Clone failures are retried three times; if all fail, `[r]` selects another source and `[q]` quits.
 - `/dev/tty` is used for selection and installation so piped usage still works.
 - The temporary clone is removed on exit.
 - Prefer downloading and reviewing the bootstrap before running it instead of piping it directly to a shell.
@@ -1185,7 +1189,7 @@ bash ./install.sh
 
 ### 17. Is this stable?
 
-No. `bootstrap.sh`, both scripts and `install.sh` are **Beta v0.5**. Keep backups and report issues.
+No. `bootstrap.sh`, both scripts and `install.sh` are **Beta v0.6**. Keep backups and report issues.
 
 ### 18. Why is direct child installation rejected?
 
