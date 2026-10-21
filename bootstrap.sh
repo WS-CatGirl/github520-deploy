@@ -152,17 +152,17 @@ select_source() {
 
     printf '\nSelect a repository source:\n'
     printf '  [1] GitHub\n'
-    printf '  [2] Gitee (Recommended for Chinese Users)\n'
-    printf '  [3] GitCode\n'
+    printf '  [2] Gitee (Login may be required)\n'
+    printf '  [3] GitCode (Recommended for Chinese Users)\n'
     printf '  [4] Codeberg\n'
-    printf 'Choice [1-4, default 2]: '
+    printf 'Choice [1-4, default 3]: '
 
     if ! IFS= read -r choice < /dev/tty; then
         die "Failed to read the repository selection."
     fi
 
     choice=${choice//[[:space:]]/}
-    choice=${choice:-2}
+    choice=${choice:-3}
 
     case "$choice" in
         1)
@@ -192,7 +192,7 @@ clone_repository() {
 
     for attempt in 1 2 3; do
         info "Cloning $REPO_URL (attempt $attempt/3)..."
-        if git clone --depth 1 --branch main "$REPO_URL" "$REPO_DIR"; then
+        if GIT_TERMINAL_PROMPT=0 git clone --depth 1 --branch main "$REPO_URL" "$REPO_DIR"; then
             ok "Repository cloned."
             return 0
         fi
@@ -244,6 +244,6 @@ main() {
     exit "$rc"
 }
 
-if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+if [[ -z "${BASH_SOURCE[0]:-}" || "${BASH_SOURCE[0]}" == "$0" ]]; then
     main "$@"
 fi

@@ -13,7 +13,7 @@
 
 - 检查 Linux、Bash 4+、curl、`/dev/tty` 和 git
 - git 缺失时只打印对应发行版安装命令，不自动安装
-- 四个仓库源选择（默认 Gitee）
+- 四个仓库源选择（默认 GitCode）
 - 临时目录 + `git clone --depth 1`
 - 检查 `install.sh` 与两个子脚本后，用 `/dev/tty` 启动安装
 
@@ -62,6 +62,8 @@
 | **Codeberg** | `git clone https://codeberg.org/WS_CatGirl/github520-deploy.git` |
 
 > **四个源内容相同，任选一个即可，不要重复克隆。**
+>
+> Gitee 的 HTTPS clone 可能要求登录；bootstrap 默认使用 GitCode。
 
 ---
 
@@ -135,7 +137,7 @@ bash ./install.sh
 说明：
 
 - Git 缺失时只打印对应发行版的安装命令，然后退出；不会自动调用包管理器；
-- 默认源是 Gitee，适合国内网络；
+- 默认源是 GitCode，适合国内网络；Gitee 的 HTTPS clone 可能要求登录；
 - 四个源分别为 GitHub、Gitee、GitCode、Codeberg；
 - clone 失败会重试 3 次；
 - 脚本使用 `/dev/tty` 读取选择和安装确认，因此兼容 `curl | bash` 的管道模式；
@@ -702,7 +704,7 @@ This repository contains a bootstrap script, a unified installer, and two GitHub
 
 - Linux, Bash 4+, curl, `/dev/tty` and git checks
 - Manual-install instructions when git is missing; no automatic package installation
-- Four repository sources (Gitee is the default)
+- Four repository sources (GitCode is the default)
 - Temporary directory + `git clone --depth 1`
 - File checks, then launches `install.sh` through `/dev/tty`
 
@@ -749,6 +751,8 @@ Both child scripts provide:
 | **Codeberg** | `git clone https://codeberg.org/WS_CatGirl/github520-deploy.git` |
 
 > **All four sources contain the same repository. Choose one only; do not clone all four.**
+>
+> Gitee HTTPS clone may require login; bootstrap uses GitCode by default.
 
 ## Which script?
 
@@ -780,7 +784,7 @@ check Linux / Bash 4+ / curl / /dev/tty / git
 ```
 
 - If git is missing, it prints distro-specific install commands and exits; it never installs packages automatically.
-- Gitee is the default source.
+- GitCode is the default source and works anonymously in China; Gitee HTTPS clone may require login.
 - The four sources are GitHub, Gitee, GitCode and Codeberg.
 - Clone failures are retried three times.
 - `/dev/tty` is used for selection and installation so piped usage still works.
