@@ -11,6 +11,7 @@
 #   https://github.com/WS-CatGirl/github520-deploy
 #   https://gitee.com/wscatgirl/github520-deploy
 #   https://gitcode.com/WS_CatGirl/github520-deploy
+#   https://codeberg.org/WS_CatGirl/github520-deploy
 #
 # Installed CLI:
 #   /usr/local/bin/github520-arch
@@ -57,10 +58,12 @@ FORCE=0
 RESTORE_TARGET=""
 
 GITHUB520_REPO_URL="https://github.com/521xueweihan/GitHub520"
+# Project repository links for the final summary; hosts data uses HOSTS_SOURCES.
 REPO_URLS=(
     "https://github.com/WS-CatGirl/github520-deploy"
     "https://gitee.com/wscatgirl/github520-deploy"
     "https://gitcode.com/WS_CatGirl/github520-deploy"
+    "https://codeberg.org/WS_CatGirl/github520-deploy"
 )
 HOSTS_SOURCES=(
     "https://raw.hellogithub.com/hosts"
@@ -2633,6 +2636,7 @@ EOF
     printf '    GitHub : %s\n' "${REPO_URLS[0]}"
     printf '    Gitee  : %s\n' "${REPO_URLS[1]}"
     printf '    GitCode: %s\n' "${REPO_URLS[2]}"
+    printf '    Codeberg: %s\n' "${REPO_URLS[3]}"
     printf '\n'
     printf '  作者 / Author: 白丝小猫娘 (WS-CatGirl)\n'
     printf '  临时文件已清理，备份和日志已保留。\n'
