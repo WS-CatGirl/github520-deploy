@@ -133,7 +133,8 @@ bash ./install.sh
    └─ 3 次失败 → [r] 重选源 / [q] 退出
 → 检查 install.sh / 两个子脚本
 → bash install.sh < /dev/tty
-→ 清理临时目录
+   ├─ 成功 → 清理临时目录
+   └─ 失败 → [k] 保留克隆 / [d] 删除
 ```
 
 说明：
@@ -143,7 +144,7 @@ bash ./install.sh
 - 四个源分别为 GitHub、Gitee、GitCode、Codeberg；
 - clone 失败会重试 3 次；仍失败时可 `[r]` 重新选择仓库源，或 `[q]` 退出；
 - 脚本使用 `/dev/tty` 读取选择和安装确认，因此兼容 `curl | bash` 的管道模式；
-- 临时目录在结束后自动清理；
+- 安装成功会自动清理临时目录；安装失败时会询问 `[k]` 保留克隆（默认，便于排查）或 `[d]` 删除，选择保留会打印本地仓库路径和之后手动删除的命令；
 - 建议先下载查看再运行，不要用 `sudo` 直接执行远端脚本。
 
 短链入口：
@@ -784,7 +785,8 @@ check Linux / Bash 4+ / curl / /dev/tty / git
    └─ 3 failures → [r] select another source / [q] quit
 → check install.sh and both child scripts
 → bash install.sh < /dev/tty
-→ remove the temporary directory
+   ├─ success → remove the temporary directory
+   └─ failure → [k] keep the clone / [d] delete it
 ```
 
 - If git is missing, it prints distro-specific install commands and exits; it never installs packages automatically.
@@ -792,7 +794,7 @@ check Linux / Bash 4+ / curl / /dev/tty / git
 - The four sources are GitHub, Gitee, GitCode and Codeberg.
 - Clone failures are retried three times; if all fail, `[r]` selects another source and `[q]` quits.
 - `/dev/tty` is used for selection and installation so piped usage still works.
-- The temporary clone is removed on exit.
+- On success the temporary directory is removed automatically. On failure the bootstrap asks `[k]` to keep the clone (default, useful for troubleshooting) or `[d]` to delete it; keeping it prints the local repository path and a later removal command.
 - Prefer downloading and reviewing the bootstrap before running it instead of piping it directly to a shell.
 
 The short URL is:

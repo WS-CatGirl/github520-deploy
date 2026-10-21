@@ -21,6 +21,9 @@ export LC_ALL=C
 WORKDIR=""
 REPO_DIR=""
 REPO_URL=""
+KEEP_CLONE=0
+INSTALL_STARTED=0
+INTERRUPTED=0
 
 info() {
     printf '[ INFO ] %s\n' "$*"
@@ -43,21 +46,76 @@ die() {
     exit 1
 }
 
+prompt_keep_clone() {
+    local rc=$1
+    local choice=""
+
+    [ -d "${REPO_DIR:-}" ] || return 0
+
+    printf '\n'
+    warn "Installation failed (exit code $rc)."
+    printf 'The cloned repository is still available at:\n'
+    printf '  %s\n' "$REPO_DIR"
+    printf '  [k] Keep it for troubleshooting (default)\n'
+    printf '  [d] Delete it\n'
+    printf 'Choice [k/d]: '
+
+    if ! { exec 3</dev/tty; } 2>/dev/null; then
+        warn "No interactive terminal available; keeping the clone."
+        KEEP_CLONE=1
+        return 0
+    fi
+
+    if ! IFS= read -r choice <&3; then
+        exec 3<&-
+        warn "No interactive terminal available; keeping the clone."
+        KEEP_CLONE=1
+        return 0
+    fi
+    exec 3<&-
+
+    choice=${choice//[[:space:]]/}
+    case "${choice,,}" in
+        ''|k|keep)
+            KEEP_CLONE=1
+            ;;
+        d|delete)
+            KEEP_CLONE=0
+            ;;
+        *)
+            warn "Unrecognized choice; keeping the clone."
+            KEEP_CLONE=1
+            ;;
+    esac
+}
+
 cleanup() {
     local rc=$?
     trap - EXIT
 
+    if [ "${INSTALL_STARTED:-0}" -eq 1 ] &&
+       [ "${INTERRUPTED:-0}" -ne 1 ] &&
+       [ "$rc" -ne 0 ] &&
+       [ "${KEEP_CLONE:-0}" -ne 1 ]; then
+        prompt_keep_clone "$rc"
+    fi
+
     if [ -n "${WORKDIR:-}" ] && [ -d "$WORKDIR" ]; then
-        rm -rf -- "$WORKDIR" 2>/dev/null || true
+        if [ "${KEEP_CLONE:-0}" -eq 1 ]; then
+            printf '\n[ INFO ] Repository kept at: %s\n' "$REPO_DIR"
+            printf '[ INFO ] Remove it later with: rm -rf -- %q\n' "$WORKDIR"
+        else
+            rm -rf -- "$WORKDIR" 2>/dev/null || true
+        fi
     fi
 
     exit "$rc"
 }
 
 trap cleanup EXIT
-trap 'exit 130' INT
-trap 'exit 143' TERM
-trap 'exit 129' HUP
+trap 'INTERRUPTED=1; exit 130' INT
+trap 'INTERRUPTED=1; exit 143' TERM
+trap 'INTERRUPTED=1; exit 129' HUP
 
 print_package_commands() {
     local package=$1
@@ -266,6 +324,7 @@ main() {
     check_repository_files
 
     info "Launching install.sh from the temporary clone..."
+    INSTALL_STARTED=1
     set +e
     bash "$REPO_DIR/install.sh" < /dev/tty
     local rc=$?
