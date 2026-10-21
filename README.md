@@ -398,11 +398,12 @@ GitHub520 下载并备份、更新 hosts
 4) Abort deployment
 ```
 
-- 30 秒实时倒计时；
+- 30 秒实时倒计时（仅 Btrfs 快照菜单）；
 - 选择 3 后会显示鲜红色 `[ ALERT ]` 警告，并要求在 30 秒内输入全大写 `YES` 并按回车；
 - 超时、snapper/btrfs 错误、拒绝确认或选择 4 都会中止；
 - 选择 3 不创建任何快照，但会继续执行安装；
-- 非 Btrfs 或没有 snapper 配置时自动跳过；
+- 非 Btrfs 时显示醒目的 `[ WARN ]`，**不倒计时**，只有输入 `y`/`yes` 才继续；`n` 或直接回车取消安装；
+- Btrfs 但没有 snapper 配置时自动跳过；
 - 选择 1/2 时，快照发生在写 hosts 和改网络之前。
 
 ## 网络检测与静态 IP/DNS
@@ -1033,6 +1034,8 @@ Both scripts support:
 ```
 
 Timeout, snapper error, a rejected confirmation or option 4 aborts. Option 3 continues without creating any snapshot after typing uppercase `YES` and pressing Enter within 30 seconds. For options 1/2, the snapshot is created before hosts and network changes.
+
+If the root filesystem is not Btrfs, the scripts print a prominent `[ WARN ]` and wait for a `y/N` answer **without a timeout**. Only `y`/`yes` continues; `n` or Enter cancels the installation. A Btrfs system without snapper configs still skips snapshots automatically.
 
 ## Network configuration
 

@@ -635,6 +635,55 @@ snapshot_root_config() {
     SNAPSHOT_DONE="root subvolume (@) via snapper config '$root_cfg'"
 }
 
+confirm_non_btrfs() {
+    local root_fs=${1:-unknown}
+    local answer=""
+
+    require_tty
+
+    printf '\n%s' "$C_ALERT"
+    cat <<EOF
+============================================================
+[ WARN ] NON-BTRFS ROOT FILESYSTEM DETECTED: ${root_fs}
+============================================================
+NO BTRFS SNAPSHOT WILL BE CREATED.
+
+Without a snapshot there is no automatic rollback point for:
+  - /etc/hosts
+  - network configuration
+  - the installed systemd timer
+
+Back up important files before continuing.
+
+Continue installation without a snapshot? [y/N]:
+EOF
+    printf '%s' "$C_RESET"
+
+    while true; do
+        if ! IFS= read -r answer; then
+            printf '\n'
+            die "Failed to read the confirmation."
+        fi
+
+        answer=${answer//[[:space:]]/}
+        case "${answer,,}" in
+            y|yes)
+                printf '\n'
+                warn "Continuing without a Btrfs snapshot; no rollback point will be created."
+                return 0
+                ;;
+            n|no|'')
+                printf '\n'
+                die "Installation cancelled by user; no snapshot was created."
+                ;;
+            *)
+                warn "Enter y or n."
+                printf 'Continue installation without a snapshot? [y/N]: '
+                ;;
+        esac
+    done
+}
+
 confirm_no_snapshot() {
     local state answer="" key rc remaining
 
@@ -778,8 +827,8 @@ detect_filesystem_and_snapshot() {
     fi
 
     if [ "$root_fs" != "btrfs" ]; then
-        log "Root filesystem is '$root_fs', not Btrfs; snapshot skipped."
-        SNAPSHOT_DONE="not applicable ($root_fs)"
+        confirm_non_btrfs "$root_fs"
+        SNAPSHOT_DONE="not applicable ($root_fs; no snapshot)"
         return 0
     fi
 
