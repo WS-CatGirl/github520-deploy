@@ -15,7 +15,7 @@
 # script runs its own platform/container/VM checks again, so the original
 # welcome and error messages stay unchanged.
 #
-# Version : v1.0-milestone.1
+# Version : v1.0-milestone.2
 # Author  : 白丝小猫娘 (WS-CatGirl)
 # =============================================================================
 
@@ -24,7 +24,7 @@ IFS=$'\n\t'
 umask 022
 export LC_ALL=C
 
-VERSION="v1.0-milestone.1"
+VERSION="v1.0-milestone.2"
 RELEASE_CHANNEL="milestone"
 SCRIPT_NAME=${0##*/}
 SELF=""
@@ -39,6 +39,10 @@ KERNEL=""
 ARCH_LABEL=""
 SYSTEMD_STATE="no"
 STTY_STATE=""
+HOST_NAME=""
+USER_NAME=""
+ROOT_FS=""
+VIRT=""
 
 _color_enabled() {
     [ -z "${NO_COLOR:-}" ] &&
@@ -93,6 +97,16 @@ err() {
 die() {
     err "$*"
     exit 1
+}
+
+show_prerelease_notice() {
+    printf '\n%s' "$C_ALERT"
+    printf '============================================================\n'
+    printf '[ WARN ] PRE-RELEASE BUILD: %s (%s)\n' "$VERSION" "$RELEASE_CHANNEL"
+    printf 'This is not a Stable release. Keep backups and test before use.\n'
+    printf 'Stable v1.0 is expected on 2026-10-25.\n'
+    printf '============================================================\n'
+    printf '%s\n' "$C_RESET"
 }
 
 show_welcome() {
@@ -173,6 +187,24 @@ require_root() {
 detect_platform() {
     local machine
 
+    HOST_NAME=$(hostname 2>/dev/null || true)
+    [ -n "$HOST_NAME" ] || HOST_NAME=$(cat /etc/hostname 2>/dev/null || true)
+    [ -n "$HOST_NAME" ] || HOST_NAME="unknown"
+
+    USER_NAME=${SUDO_USER:-}
+    if [ -z "$USER_NAME" ]; then
+        USER_NAME=$(id -un 2>/dev/null || printf 'unknown')
+    fi
+
+    ROOT_FS=$(findmnt -n -o FSTYPE -T / 2>/dev/null || true)
+    [ -n "$ROOT_FS" ] || ROOT_FS=$(stat -f -c '%T' / 2>/dev/null || true)
+    [ -n "$ROOT_FS" ] || ROOT_FS="unknown"
+
+    VIRT=$(systemd-detect-virt 2>/dev/null || true)
+    if [ -z "$VIRT" ] || [ "$VIRT" = "none" ]; then
+        VIRT="none"
+    fi
+
     if [ "$(uname -s 2>/dev/null || true)" != "Linux" ]; then
         die "This installer only supports Linux."
     fi
@@ -240,11 +272,15 @@ detect_platform() {
 show_info() {
     printf '\n%sSystem information%s\n' "$C_INFO" "$C_RESET"
     printf '  OS      : %s\n' "$OS_NAME"
+    printf '  HostName: %s\n' "$HOST_NAME"
+    printf '  UserName: %s\n' "$USER_NAME"
     if [ -n "$OS_VERSION" ]; then
         printf '  Version : %s\n' "$OS_VERSION"
     fi
     printf '  Kernel  : %s\n' "$KERNEL"
     printf '  Arch    : %s\n' "$ARCH_LABEL"
+    printf '  Root FS : %s\n' "$ROOT_FS"
+    printf '  Virt    : %s\n' "$VIRT"
     printf '  systemd : %s\n' "$SYSTEMD_STATE"
     printf '  Script  : %s\n' "$CHILD_SCRIPT"
     printf '  Repo    : %s\n' "$SCRIPT_DIR"
@@ -356,6 +392,8 @@ launch_child() {
 }
 
 main() {
+    show_prerelease_notice
+
     case "${1:-}" in
         -h|--help|help)
             usage

@@ -2,7 +2,7 @@
 # =============================================================================
 # github520-common.sh
 #
-# Version : v1.0-milestone.1
+# Version : v1.0-milestone.2
 #
 # Shared implementation for both GitHub520 Linux managers.
 #
@@ -61,7 +61,7 @@ case "$PLATFORM" in
         ;;
 esac
 
-VERSION="v1.0-milestone.1"
+VERSION="v1.0-milestone.2"
 RELEASE_CHANNEL="milestone"
 SCRIPT_NAME=${0##*/}
 SELF=""
@@ -286,6 +286,16 @@ EOF
     printf '  This catgirl is ready to make GitHub purr on %s.\n' "$PLATFORM_DESC"
     printf '  Version: %s (%s)\n' "$VERSION" "$RELEASE_CHANNEL"
     printf '\n'
+}
+
+show_prerelease_notice() {
+    printf '\n%s' "$C_ALERT"
+    printf '============================================================\n'
+    printf '[ WARN ] PRE-RELEASE BUILD: %s (%s)\n' "$VERSION" "$RELEASE_CHANNEL"
+    printf 'This is not a Stable release. Keep backups and test before use.\n'
+    printf 'Stable v1.0 is expected on 2026-10-25.\n'
+    printf '============================================================\n'
+    printf '%s\n' "$C_RESET"
 }
 
 usage() {
@@ -2785,8 +2795,8 @@ EOF
     printf '  感谢安装和使用，喵～ Ciallo～(∠・ω< )⌒★\n'
     printf '  Thank you for installing %s!\n' "$PROGRAM_LABEL"
     printf '\n'
-    printf '  提示：这是 v1.0-milestone.1 预发布版本，请先备份重要配置；遇到问题欢迎反馈。\n'
-    printf '  Note: this is the v1.0-milestone.1 pre-release. Keep backups and report any issues.\n'
+    printf '  提示：这是 v1.0-milestone.2 预发布版本，请先备份重要配置；遇到问题欢迎反馈。\n'
+    printf '  Note: this is the v1.0-milestone.2 pre-release. Keep backups and report any issues.\n'
     printf '\n'
 }
 
@@ -2801,6 +2811,8 @@ is_installed_cli() {
 
 main() {
     local welcome_shown=0
+
+    show_prerelease_notice
 
     SELF=$(readlink -f -- "$0" 2>/dev/null || true)
     [ -n "$SELF" ] || SELF=${0:-}

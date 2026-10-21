@@ -16,6 +16,7 @@
 
 `bootstrap.sh` 提供：
 
+- 启动时先显示非 Stable 预发布警告
 - 检查 Linux、Bash 4+、curl、`/dev/tty` 和 git
 - git 缺失时只打印对应发行版安装命令，不自动安装
 - 四个仓库源选择（默认 GitCode）
@@ -24,9 +25,10 @@
 
 `install.sh` 提供：
 
+- 启动时先显示非 Stable 预发布警告
 - 主动请求 sudo
 - 第一次中英猫娘欢迎语
-- 检测发行版、内核、架构、systemd
+- 显示系统信息：OS、HostName、UserName、版本、内核、架构、Root FS、Virt、systemd、选中入口和仓库目录
 - 15 秒倒计时确认（默认取消）
 - 拉起前执行 `bash -n` 语法检查（共享库和选中入口）
 - 根据发行版自动选择 Arch 版或通用版
@@ -34,6 +36,7 @@
 
 两个平台入口共享的核心提供：
 
+- 实际命令运行前显示非 Stable 预发布警告
 - 第二次猫娘风格欢迎与结束语
 - 再次检测发行版；通用版额外检测 WSL/Docker 与 KVM/QEMU/Hyper-V
 - root/sudo 权限处理
@@ -55,9 +58,9 @@
 >
 > **AI 辅助声明**：本项目在编写过程中使用了 AI 编程助手；AI 生成内容不会自动发布，最终版本由维护者审阅后决定。详见 [AI 辅助开发声明](#ai-辅助开发声明)。
 >
-> **发布状态**：当前为 **v1.0-milestone.1**（milestone 1），准备进入 RC 阶段；预计 **2026-10-25** 发布 **Stable v1.0**。RC 前仍可能有行为调整，请保留备份。
+> **发布状态**：当前为 **v1.0-milestone.2**（milestone 2），准备进入 RC 阶段；预计 **2026-10-25** 发布 **Stable v1.0**。RC 前仍可能有行为调整，请保留备份。
 >
-> `bootstrap.sh`、`install.sh` 与两个脚本均为 **v1.0-milestone.1**，请先备份并在测试机验证。
+> `bootstrap.sh`、`install.sh` 与两个脚本均为 **v1.0-milestone.2**，请先备份并在测试机验证。
 
 ---
 
@@ -569,7 +572,7 @@ sudo github520-deploy --uninstall-completely --force
 - Timer 以 root 执行本地脚本；确保 `/usr/local/bin/github520-arch` 或 `/usr/local/bin/github520-deploy` 归 root 所有且不可被普通用户写入。
 - 脚本不会安装软件包、修改防火墙或 SSH 配置。
 - 两个脚本的 timer 不应当同时启用。
-- 当前为 **v1.0-milestone.1**，请保留快照和备份；`bootstrap.sh` 会在正式使用前检查环境。
+- 当前为 **v1.0-milestone.2**，请保留快照和备份；`bootstrap.sh` 会在正式使用前检查环境。
 
 ## AI 辅助开发声明
 
@@ -706,7 +709,7 @@ bash ./install.sh
 
 ### Q17: 这是正式版吗？
 
-不是正式版。当前为 **v1.0-milestone.1**，准备进入 RC 阶段；**Stable v1.0** 预计 **2026-10-25** 发布。请先备份并反馈问题。
+不是正式版。当前为 **v1.0-milestone.2**，准备进入 RC 阶段；**Stable v1.0** 预计 **2026-10-25** 发布。请先备份并反馈问题。
 
 ### Q18: 为什么直接运行子脚本安装会被拒绝？
 
@@ -747,6 +750,7 @@ Both entries are now thin wrappers: `Github520-Arch.sh` / `github520-deploy.sh` 
 
 `bootstrap.sh` provides:
 
+- A non-Stable pre-release warning before doing anything
 - Linux, Bash 4+, curl, `/dev/tty` and git checks
 - Manual-install instructions when git is missing; no automatic package installation
 - Four repository sources (GitCode is the default)
@@ -755,9 +759,10 @@ Both entries are now thin wrappers: `Github520-Arch.sh` / `github520-deploy.sh` 
 
 `install.sh` provides:
 
+- A non-Stable pre-release warning before doing anything
 - Proactive sudo request
 - First bilingual catgirl welcome
-- Distribution, kernel, architecture and systemd detection
+- System information: OS, HostName, UserName, version, kernel, architecture, Root FS, Virt, systemd, selected entry and repository directory
 - 15-second confirmation countdown (default: cancel)
 - `bash -n` syntax check for the shared library and selected entry before launch
 - Automatic selection of the Arch or generic script
@@ -765,6 +770,7 @@ Both entries are now thin wrappers: `Github520-Arch.sh` / `github520-deploy.sh` 
 
 The shared core behind both platform entries provides:
 
+- A non-Stable pre-release warning before actual commands
 - Second catgirl welcome and final message
 - A second distribution check; the generic script also checks WSL/Docker and KVM/QEMU/Hyper-V
 - root/sudo handling
@@ -786,9 +792,9 @@ The shared core behind both platform entries provides:
 >
 > **AI assistance**: AI coding assistants were used during development. AI output is not published automatically; the maintainer reviews released content. See [AI-assisted development disclosure](#ai-assisted-development-disclosure).
 >
-> **Release status**: The current version is **v1.0-milestone.1** (milestone 1), preparing for the RC phase. **Stable v1.0** is expected on **2026-10-25**. Behaviour may still change before RC; keep backups.
+> **Release status**: The current version is **v1.0-milestone.2** (milestone 2), preparing for the RC phase. **Stable v1.0** is expected on **2026-10-25**. Behaviour may still change before RC; keep backups.
 >
-> `bootstrap.sh`, both scripts and `install.sh` are **v1.0-milestone.1**.
+> `bootstrap.sh`, both scripts and `install.sh` are **v1.0-milestone.2**.
 
 ## Get the repository (choose one of four)
 
@@ -1265,7 +1271,7 @@ bash ./install.sh
 
 ### 17. Is this stable?
 
-No. The current version is **v1.0-milestone.1**, preparing for RC. **Stable v1.0** is expected on **2026-10-25**. Keep backups and report issues.
+No. The current version is **v1.0-milestone.2**, preparing for RC. **Stable v1.0** is expected on **2026-10-25**. Keep backups and report issues.
 
 ### 18. Why is direct child installation rejected?
 

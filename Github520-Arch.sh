@@ -4,7 +4,7 @@
 #
 # Thin Arch Linux entry point for github520-common.sh.
 #
-# Version : v1.0-milestone.1
+# Version : v1.0-milestone.2
 # Author  : 白丝小猫娘 (WS-CatGirl)
 #
 # Repositories:
