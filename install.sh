@@ -10,7 +10,7 @@
 #   bash ./install.sh
 #
 # install.sh requests sudo, detects the platform, shows a short summary,
-# asks for confirmation with a 15-second countdown, checks the shared library
+# asks for confirmation with a 60-second countdown, checks the shared library
 # and selected script with "bash -n", and finally launches it. The selected
 # script runs its own platform/container/VM checks again, so the original
 # welcome and error messages stay unchanged.
@@ -137,7 +137,7 @@ Usage:
 
 The installer must be run from the cloned repository. It requests sudo,
 detects the distribution/kernel/architecture/systemd, shows a summary,
-asks for confirmation with a 15-second countdown, checks the shared library
+asks for confirmation with a 60-second countdown, checks the shared library
 and selected script with "bash -n", and then launches it.
 
 Direct installation through repository copies of Github520-Arch.sh or
@@ -316,13 +316,13 @@ confirm_install() {
         die "Unable to configure the terminal for the countdown."
     fi
 
-    deadline=$((SECONDS + 15))
+    deadline=$((SECONDS + 60))
     while :; do
         remaining=$((deadline - SECONDS))
         if [ "$remaining" -le 0 ]; then
             restore_tty
             printf '\n'
-            warn "Timed out after 15 seconds; installation cancelled."
+            warn "Timed out after 60 seconds; installation cancelled."
             return 1
         fi
 
@@ -431,7 +431,7 @@ main() {
     ok "Platform detection complete: $OS_NAME ($ARCH_LABEL)."
     show_info
 
-    log "Waiting for installation confirmation (15-second timeout)."
+    log "Waiting for installation confirmation (60-second timeout)."
     if ! confirm_install; then
         log "Installation cancelled."
         exit 0

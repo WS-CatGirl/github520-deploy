@@ -29,7 +29,7 @@
 - 主动请求 sudo
 - 第一次中英猫娘欢迎语
 - 显示系统信息：OS、HostName、UserName、版本、内核、架构、Root FS、Virt、systemd、选中入口和仓库目录
-- 15 秒倒计时确认（默认取消）
+- 60 秒倒计时确认（默认取消）
 - 拉起前执行 `bash -n` 语法检查（共享库和选中入口）
 - 根据发行版自动选择 Arch 版或通用版
 - 拒绝直接运行仓库副本的 `install`，统一入口安装
@@ -192,7 +192,7 @@ https://get.whitesocks-crs.top/bootstrap.sh
 - systemd
 - bash 4+
 - `sudo`（非 root 运行 `install.sh` 时）
-- `stty`（coreutils，用于 15 秒倒计时）
+- `stty`（coreutils，用于 60 秒倒计时）
 - `curl`
 - `ip`（iproute2）
 - `findmnt`、`awk`、`sed`、`grep`、`mktemp`、`install`
@@ -217,14 +217,14 @@ bash ./install.sh
 
 也可以使用 `bootstrap.sh` 选择仓库源并自动 clone，详见上面的 [Bootstrap 一键引导](#bootstrap-一键引导)。
 
-`install.sh` 会主动请求 sudo、检测系统、显示信息、15 秒确认，然后自动选择并拉起 Arch 或通用脚本；也可以显式运行 `sudo bash ./install.sh`。
+`install.sh` 会主动请求 sudo、检测系统、显示信息、60 秒确认，然后自动选择并拉起 Arch 或通用脚本；也可以显式运行 `sudo bash ./install.sh`。
 
 它依次执行：
 
 1. 显示第一次中英猫娘欢迎语；
 2. 检测发行版、内核、架构、systemd；
 3. 显示系统信息；
-4. 15 秒倒计时确认（默认取消）；
+4. 60 秒倒计时确认（默认取消）；
 5. 检查共享库和对应入口存在，并对 `lib/*.sh` 与选中入口执行 `bash -n`；
 6. 按发行版拉起：
    - `ID=arch` → `Github520-Arch.sh`
@@ -369,7 +369,7 @@ bash ./install.sh
   ↓
 显示系统信息
   ↓
-15 秒倒计时（默认取消）
+60 秒倒计时（默认取消）
   ↓
 检查子脚本存在 + bash -n
   ↓
@@ -763,7 +763,7 @@ Both entries are now thin wrappers: `Github520-Arch.sh` / `github520-deploy.sh` 
 - Proactive sudo request
 - First bilingual catgirl welcome
 - System information: OS, HostName, UserName, version, kernel, architecture, Root FS, Virt, systemd, selected entry and repository directory
-- 15-second confirmation countdown (default: cancel)
+- 60-second confirmation countdown (default: cancel)
 - `bash -n` syntax check for the shared library and selected entry before launch
 - Automatic selection of the Arch or generic script
 - Direct `install` through repository copies is rejected; use the installer
@@ -880,7 +880,7 @@ https://get.whitesocks-crs.top/bootstrap.sh
 - systemd
 - bash 4+
 - `sudo` (when `install.sh` is not run as root)
-- `stty` (coreutils, for the 15-second countdown)
+- `stty` (coreutils, for the 60-second countdown)
 - `curl`, `ip`, `findmnt`, `awk`, `sed`, `grep`, `mktemp`, `install`
 - `git` (only for cloning the repository)
 - Optional: Btrfs + snapper + btrfs-progs
@@ -902,14 +902,14 @@ bash ./install.sh
 
 You can also use `bootstrap.sh` to select a source and clone automatically; see [Bootstrap](#bootstrap) above.
 
-`install.sh` requests sudo, detects the system, shows a summary, asks for confirmation with a 15-second countdown, and then launches the correct script; `sudo bash ./install.sh` also works.
+`install.sh` requests sudo, detects the system, shows a summary, asks for confirmation with a 60-second countdown, and then launches the correct script; `sudo bash ./install.sh` also works.
 
 It performs:
 
 1. The first bilingual catgirl welcome.
 2. Distribution, kernel, architecture and systemd detection.
 3. A system information summary.
-4. A 15-second confirmation countdown (default: cancel).
+4. A 60-second confirmation countdown (default: cancel).
 5. A shared-library and selected-entry file check, plus `bash -n` for `lib/*.sh` and the selected entry.
 6. Launch by distribution:
    - `ID=arch` → `Github520-Arch.sh`
@@ -1028,7 +1028,7 @@ distribution / kernel / architecture / systemd detection
   ↓
 system information
   ↓
-15-second countdown (default: cancel)
+60-second countdown (default: cancel)
   ↓
 file check + bash -n
   ↓
