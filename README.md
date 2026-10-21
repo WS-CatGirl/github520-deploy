@@ -1,13 +1,18 @@
 # GitHub520 Scripts for Linux
 
-本仓库包含一个统一安装入口 `install.sh`、一个引导脚本 `bootstrap.sh`，以及两个 GitHub520 hosts 管理脚本：
+本仓库包含一个统一安装入口 `install.sh`、一个引导脚本 `bootstrap.sh`、两个 GitHub520 hosts 管理入口，以及它们共享的 `lib/` 实现：
 
 | 文件 | 用途 | CLI |
 |---|---|---|
 | **bootstrap.sh** | 引导入口：检查环境、选择仓库源、clone 后调用 `install.sh` | — |
 | **install.sh** | 统一安装入口，自动选择并拉起对应脚本 | — |
-| **Github520-Arch.sh** | Arch Linux（`ID=arch`） | `github520-arch` |
-| **github520-deploy.sh** | 通用 Linux（非 Arch，systemd） | `github520-deploy` |
+| **Github520-Arch.sh** | Arch Linux 薄入口（`ID=arch`） | `github520-arch` |
+| **github520-deploy.sh** | 通用 Linux 薄入口（非 Arch，systemd） | `github520-deploy` |
+| **lib/github520-common.sh** | 两个入口共享的公共实现 | — |
+| **lib/platform-arch.sh** | Arch 平台差异：发行版检查和网络优先级 | — |
+| **lib/platform-generic.sh** | 通用平台差异；当前继承 common 的默认实现 | — |
+
+两个入口现在都是薄壳：`Github520-Arch.sh` / `github520-deploy.sh` 只负责选择平台、加载共享库并调用 `main`。公共逻辑集中在 `lib/github520-common.sh`，避免维护两份约 2800 行的重复脚本。安装后共享库会复制到 `/usr/local/lib/github520-arch/` 或 `/usr/local/lib/github520-deploy/`。
 
 `bootstrap.sh` 提供：
 
@@ -15,7 +20,7 @@
 - git 缺失时只打印对应发行版安装命令，不自动安装
 - 四个仓库源选择（默认 GitCode）
 - 临时目录 + `git clone --depth 1`
-- 检查 `install.sh` 与两个子脚本后，用 `/dev/tty` 启动安装
+- 检查 `install.sh`、两个入口和 `lib/` 共享库后，用 `/dev/tty` 启动安装
 
 `install.sh` 提供：
 
@@ -23,11 +28,11 @@
 - 第一次中英猫娘欢迎语
 - 检测发行版、内核、架构、systemd
 - 15 秒倒计时确认（默认取消）
-- 拉起前执行 `bash -n` 语法检查
+- 拉起前执行 `bash -n` 语法检查（共享库和选中入口）
 - 根据发行版自动选择 Arch 版或通用版
 - 拒绝直接运行仓库副本的 `install`，统一入口安装
 
-两个子脚本都提供：
+两个平台入口共享的核心提供：
 
 - 第二次猫娘风格欢迎与结束语
 - 再次检测发行版；通用版额外检测 WSL/Docker 与 KVM/QEMU/Hyper-V
@@ -50,7 +55,9 @@
 >
 > **AI 辅助声明**：本项目在编写过程中使用了 AI 编程助手；AI 生成内容不会自动发布，最终版本由维护者审阅后决定。详见 [AI 辅助开发声明](#ai-辅助开发声明)。
 >
-> `bootstrap.sh`、`install.sh` 与两个脚本均为 **Beta v0.6**，请先备份并在测试机验证。
+> **发布状态**：当前为 **v1.0-milestone.1**（milestone 1），准备进入 RC 阶段；预计 **2026-10-25** 发布 **Stable v1.0**。RC 前仍可能有行为调整，请保留备份。
+>
+> `bootstrap.sh`、`install.sh` 与两个脚本均为 **v1.0-milestone.1**，请先备份并在测试机验证。
 
 ---
 
@@ -95,7 +102,7 @@
 
 ## 选择哪个脚本
 
-实际安装统一由 `install.sh` 自动选择，不需要手动运行两个子脚本。
+实际安装统一由 `install.sh` 自动选择，不需要手动运行两个入口。
 
 ### `install.sh` 会选择 Arch 版，如果：
 
@@ -134,7 +141,7 @@ bash ./install.sh
 → git clone --depth 1
    ├─ 成功 → 检查文件
    └─ 3 次失败 → [r] 重选源 / [q] 退出
-→ 检查 install.sh / 两个子脚本
+→ 检查 install.sh / 共享库 / 两个入口
 → bash install.sh < /dev/tty
    ├─ 成功 → 清理临时目录
    └─ 失败 → [k] 保留克隆 / [d] 删除
@@ -215,11 +222,11 @@ bash ./install.sh
 2. 检测发行版、内核、架构、systemd；
 3. 显示系统信息；
 4. 15 秒倒计时确认（默认取消）；
-5. 检查对应子脚本存在并执行 `bash -n`；
+5. 检查共享库和对应入口存在，并对 `lib/*.sh` 与选中入口执行 `bash -n`；
 6. 按发行版拉起：
    - `ID=arch` → `Github520-Arch.sh`
    - 其他 systemd Linux → `github520-deploy.sh`
-7. 子脚本再次检测发行版；通用版还会检测 WSL/Docker 与 KVM/QEMU/Hyper-V。随后显示第二次欢迎语并继续安装。
+7. 入口再次检测发行版；通用版还会检测 WSL/Docker 与 KVM/QEMU/Hyper-V。随后显示第二次欢迎语并继续安装。
 
 > 不要直接运行 `sudo ./Github520-Arch.sh install` 或 `sudo ./github520-deploy.sh install`。这会被拒绝，并提示使用 `install.sh`。
 >
@@ -267,6 +274,20 @@ sudo /usr/local/bin/github520-deploy status
 /usr/local/bin/github520-arch.sh   -> /usr/local/bin/github520-arch
 /usr/local/bin/github520-deploy.sh -> /usr/local/bin/github520-deploy
 ```
+
+入口需要的共享库安装到：
+
+```text
+/usr/local/lib/github520-arch/
+  github520-common.sh
+  platform-arch.sh
+
+/usr/local/lib/github520-deploy/
+  github520-common.sh
+  platform-generic.sh
+```
+
+`--uninstall` 和 `--uninstall-completely` 都会删除对应的共享库目录喵。
 
 ## 命令一览
 
@@ -325,7 +346,7 @@ Systemd 内部模式：
   ↓
 临时目录 + git clone --depth 1
   ↓
-检查 install.sh 和两个子脚本
+检查 install.sh、共享库和两个入口
   ↓
 bash install.sh < /dev/tty
 ```
@@ -548,7 +569,7 @@ sudo github520-deploy --uninstall-completely --force
 - Timer 以 root 执行本地脚本；确保 `/usr/local/bin/github520-arch` 或 `/usr/local/bin/github520-deploy` 归 root 所有且不可被普通用户写入。
 - 脚本不会安装软件包、修改防火墙或 SSH 配置。
 - 两个脚本的 timer 不应当同时启用。
-- 当前为 **Beta v0.6**，请保留快照和备份；`bootstrap.sh` 会在正式使用前检查环境。
+- 当前为 **v1.0-milestone.1**，请保留快照和备份；`bootstrap.sh` 会在正式使用前检查环境。
 
 ## AI 辅助开发声明
 
@@ -685,11 +706,11 @@ bash ./install.sh
 
 ### Q17: 这是正式版吗？
 
-不是。`bootstrap.sh`、两个脚本和 `install.sh` 均为 **Beta v0.6**，请先备份并反馈问题。
+不是正式版。当前为 **v1.0-milestone.1**，准备进入 RC 阶段；**Stable v1.0** 预计 **2026-10-25** 发布。请先备份并反馈问题。
 
 ### Q18: 为什么直接运行子脚本安装会被拒绝？
 
-为了防止在错误发行版上装错版本，仓库里的两个子脚本副本只允许由 `install.sh` 拉起安装。直接执行 `sudo ./Github520-Arch.sh install` 或 `sudo ./github520-deploy.sh install` 会报错，并提示：
+为了防止在错误发行版上装错版本，仓库里的两个入口只允许由 `install.sh` 拉起安装。直接执行 `sudo ./Github520-Arch.sh install` 或 `sudo ./github520-deploy.sh install` 会报错，并提示：
 
 ```bash
 cd github520-deploy
@@ -710,14 +731,19 @@ bash ./install.sh
 
 # English
 
-This repository contains a bootstrap script, a unified installer, and two GitHub520 hosts managers:
+This repository contains a bootstrap script, a unified installer, two GitHub520 hosts manager entries, and the shared `lib/` implementation they use:
 
 | File | Purpose | CLI |
 |---|---|---|
 | **bootstrap.sh** | Bootstrap: checks the environment, selects a source, clones, then calls `install.sh` | — |
 | **install.sh** | Unified installer; detects the platform and launches the right script | — |
-| **Github520-Arch.sh** | Arch Linux (`ID=arch`) | `github520-arch` |
-| **github520-deploy.sh** | Generic Linux (non-Arch, systemd) | `github520-deploy` |
+| **Github520-Arch.sh** | Thin Arch Linux entry (`ID=arch`) | `github520-arch` |
+| **github520-deploy.sh** | Thin generic Linux entry (non-Arch, systemd) | `github520-deploy` |
+| **lib/github520-common.sh** | Shared implementation for both entries | — |
+| **lib/platform-arch.sh** | Arch-specific distribution check and network priority | — |
+| **lib/platform-generic.sh** | Generic platform hook; currently inherits the common defaults | — |
+
+Both entries are now thin wrappers: `Github520-Arch.sh` / `github520-deploy.sh` select the platform, load the shared library and call `main`. Shared logic lives in `lib/github520-common.sh`, so the two ~2800-line copies no longer need to be maintained separately. On installation the shared library is copied to `/usr/local/lib/github520-arch/` or `/usr/local/lib/github520-deploy/`.
 
 `bootstrap.sh` provides:
 
@@ -725,7 +751,7 @@ This repository contains a bootstrap script, a unified installer, and two GitHub
 - Manual-install instructions when git is missing; no automatic package installation
 - Four repository sources (GitCode is the default)
 - Temporary directory + `git clone --depth 1`
-- File checks, then launches `install.sh` through `/dev/tty`
+- File checks for `install.sh`, both entries and `lib/`, then launches `install.sh` through `/dev/tty`
 
 `install.sh` provides:
 
@@ -733,11 +759,11 @@ This repository contains a bootstrap script, a unified installer, and two GitHub
 - First bilingual catgirl welcome
 - Distribution, kernel, architecture and systemd detection
 - 15-second confirmation countdown (default: cancel)
-- `bash -n` syntax check before launch
+- `bash -n` syntax check for the shared library and selected entry before launch
 - Automatic selection of the Arch or generic script
 - Direct `install` through repository copies is rejected; use the installer
 
-Both child scripts provide:
+The shared core behind both platform entries provides:
 
 - Second catgirl welcome and final message
 - A second distribution check; the generic script also checks WSL/Docker and KVM/QEMU/Hyper-V
@@ -760,7 +786,9 @@ Both child scripts provide:
 >
 > **AI assistance**: AI coding assistants were used during development. AI output is not published automatically; the maintainer reviews released content. See [AI-assisted development disclosure](#ai-assisted-development-disclosure).
 >
-> `bootstrap.sh`, both scripts and `install.sh` are **Beta v0.6**.
+> **Release status**: The current version is **v1.0-milestone.1** (milestone 1), preparing for the RC phase. **Stable v1.0** is expected on **2026-10-25**. Behaviour may still change before RC; keep backups.
+>
+> `bootstrap.sh`, both scripts and `install.sh` are **v1.0-milestone.1**.
 
 ## Get the repository (choose one of four)
 
@@ -801,7 +829,7 @@ check Linux / Bash 4+ / curl / /dev/tty / git
 → git clone --depth 1
    ├─ success → check files
    └─ 3 failures → [r] select another source / [q] quit
-→ check install.sh and both child scripts
+→ check install.sh, lib/ and both entries
 → bash install.sh < /dev/tty
    ├─ success → remove the temporary directory
    └─ failure → [k] keep the clone / [d] delete it
@@ -876,11 +904,11 @@ It performs:
 2. Distribution, kernel, architecture and systemd detection.
 3. A system information summary.
 4. A 15-second confirmation countdown (default: cancel).
-5. A file check and `bash -n` syntax check for the selected script.
+5. A shared-library and selected-entry file check, plus `bash -n` for `lib/*.sh` and the selected entry.
 6. Launch by distribution:
    - `ID=arch` → `Github520-Arch.sh`
    - other systemd Linux → `github520-deploy.sh`
-7. The child script re-checks the distribution; the generic script also checks WSL/Docker and KVM/QEMU/Hyper-V. It then shows the second welcome and continues.
+7. The entry re-checks the distribution; the generic version also checks WSL/Docker and KVM/QEMU/Hyper-V. It then shows the second welcome and continues.
 
 > Do not run `sudo ./Github520-Arch.sh install` or `sudo ./github520-deploy.sh install` directly. They are rejected with a hint to use `install.sh`.
 >
@@ -922,6 +950,20 @@ Compatibility symlinks:
 /usr/local/bin/github520-deploy.sh -> /usr/local/bin/github520-deploy
 ```
 
+The shared libraries required by the entries are installed under:
+
+```text
+/usr/local/lib/github520-arch/
+  github520-common.sh
+  platform-arch.sh
+
+/usr/local/lib/github520-deploy/
+  github520-common.sh
+  platform-generic.sh
+```
+
+Both `--uninstall` and `--uninstall-completely` remove the matching shared-library directory.
+
 ## Commands
 
 Use `bash ./install.sh` for repository installs. The commands below manage an installed copy.
@@ -960,7 +1002,7 @@ select one of four sources
   ↓
 temporary directory + git clone --depth 1
   ↓
-verify install.sh and child scripts
+verify install.sh, lib/ and both entries
   ↓
 bash install.sh < /dev/tty
 ```
@@ -1102,7 +1144,7 @@ Complete uninstall restores the pre-install hosts, removes CLI/units, logs, back
 - Downloads are HTTPS-only; redirects from HTTPS to HTTP are refused.
 - Keep the installed CLI root-owned and non-writable by unprivileged users.
 - Do not enable both timers on the same machine.
-- Beta software: keep snapshots and backups.
+- Milestone software: keep snapshots and backups. Stable v1.0 is expected on 2026-10-25.
 
 ## AI-assisted development disclosure
 
@@ -1223,7 +1265,7 @@ bash ./install.sh
 
 ### 17. Is this stable?
 
-No. `bootstrap.sh`, both scripts and `install.sh` are **Beta v0.6**. Keep backups and report issues.
+No. The current version is **v1.0-milestone.1**, preparing for RC. **Stable v1.0** is expected on **2026-10-25**. Keep backups and report issues.
 
 ### 18. Why is direct child installation rejected?
 

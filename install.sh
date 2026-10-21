@@ -10,12 +10,12 @@
 #   bash ./install.sh
 #
 # install.sh requests sudo, detects the platform, shows a short summary,
-# asks for confirmation with a 15-second countdown, checks the selected
-# script with "bash -n", and finally launches it. The selected script runs
-# its own platform/container/VM checks again, so the original welcome and
-# error messages stay unchanged.
+# asks for confirmation with a 15-second countdown, checks the shared library
+# and selected script with "bash -n", and finally launches it. The selected
+# script runs its own platform/container/VM checks again, so the original
+# welcome and error messages stay unchanged.
 #
-# Version : v0.6-beta
+# Version : v1.0-milestone.1
 # Author  : 白丝小猫娘 (WS-CatGirl)
 # =============================================================================
 
@@ -24,8 +24,8 @@ IFS=$'\n\t'
 umask 022
 export LC_ALL=C
 
-VERSION="v0.6"
-RELEASE_CHANNEL="beta"
+VERSION="v1.0-milestone.1"
+RELEASE_CHANNEL="milestone"
 SCRIPT_NAME=${0##*/}
 SELF=""
 SCRIPT_DIR=""
@@ -123,8 +123,8 @@ Usage:
 
 The installer must be run from the cloned repository. It requests sudo,
 detects the distribution/kernel/architecture/systemd, shows a summary,
-asks for confirmation with a 15-second countdown, checks the selected
-script with "bash -n", and then launches it.
+asks for confirmation with a 15-second countdown, checks the shared library
+and selected script with "bash -n", and then launches it.
 
 Direct installation through repository copies of Github520-Arch.sh or
 github520-deploy.sh is rejected. Use this installer instead.
@@ -311,6 +311,22 @@ confirm_install() {
     done
 }
 
+check_libraries() {
+    local file
+
+    for file in github520-common.sh platform-arch.sh platform-generic.sh; do
+        if [ ! -f "$SCRIPT_DIR/lib/$file" ]; then
+            die "Shared library is missing: $SCRIPT_DIR/lib/$file"
+        fi
+
+        log "Checking syntax: lib/$file"
+        if ! bash -n "$SCRIPT_DIR/lib/$file"; then
+            die "Syntax check failed: $SCRIPT_DIR/lib/$file"
+        fi
+    done
+    ok "Shared library checks passed."
+}
+
 check_script() {
     CHILD_PATH="$SCRIPT_DIR/$CHILD_SCRIPT"
 
@@ -384,6 +400,7 @@ main() {
     fi
     ok "Installation confirmed."
 
+    check_libraries
     check_script
     launch_child
 }

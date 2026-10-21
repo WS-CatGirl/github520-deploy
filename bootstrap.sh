@@ -2,7 +2,7 @@
 # =============================================================================
 # bootstrap.sh
 #
-# Version : v0.6-beta
+# Version : v1.0-milestone.1
 #
 # Small bootstrap entry point for github520-deploy.
 #
@@ -268,7 +268,8 @@ clone_repository() {
 check_repository_files() {
     local file
 
-    for file in install.sh Github520-Arch.sh github520-deploy.sh; do
+    for file in install.sh Github520-Arch.sh github520-deploy.sh \
+        lib/github520-common.sh lib/platform-arch.sh lib/platform-generic.sh; do
         if [ ! -f "$REPO_DIR/$file" ]; then
             die "Required file is missing from the repository: $file"
         fi
