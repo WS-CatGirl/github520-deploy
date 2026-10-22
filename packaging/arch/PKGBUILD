@@ -1,0 +1,39 @@
+# Maintainer: 白丝小猫娘 (WS-CatGirl)
+#
+# This package is intentionally Arch-only. The generic Linux entry and
+# install.sh are not installed by the package; the CLI is self-contained.
+pkgname=github520-arch
+pkgver=1.0_milestone.2
+pkgrel=1
+pkgdesc="Manage GitHub520 hosts entries with backups, DNS checks and a systemd timer"
+arch=('any')
+url="https://github.com/WS-CatGirl/github520-deploy"
+license=('MIT')
+depends=('bash' 'curl' 'iproute2' 'gawk' 'util-linux' 'systemd')
+optdepends=(
+    'btrfs-progs: Btrfs snapshots'
+    'snapper: snapshot support'
+    'sudo: run as an unprivileged user'
+)
+makedepends=('git')
+install=github520-arch.install
+_commit=79e393c6dd186a3c70ab7e21a0f2acfcdfef0f77
+source=("git+https://github.com/WS-CatGirl/github520-deploy.git#commit=$_commit")
+sha256sums=('SKIP')
+
+package() {
+    cd "$srcdir/github520-deploy"
+
+    install -Dm755 Github520-Arch.sh "$pkgdir/usr/bin/github520-arch"
+    install -Dm644 lib/github520-common.sh \
+        "$pkgdir/usr/lib/github520-arch/github520-common.sh"
+    install -Dm644 lib/platform-arch.sh \
+        "$pkgdir/usr/lib/github520-arch/platform-arch.sh"
+    install -Dm644 packaging/arch/github520-update.service \
+        "$pkgdir/usr/lib/systemd/system/github520-update.service"
+    install -Dm644 packaging/arch/github520-update.timer \
+        "$pkgdir/usr/lib/systemd/system/github520-update.timer"
+    install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+    install -Dm644 README.md "$pkgdir/usr/share/doc/$pkgname/README.md"
+    install -Dm644 /dev/null "$pkgdir/usr/lib/github520-arch/.packaged"
+}
