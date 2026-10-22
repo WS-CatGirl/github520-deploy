@@ -20,6 +20,11 @@ export LC_ALL=C
 
 : "${PLATFORM:=generic}"
 
+case "${GITHUB520_PACKAGED:-0}" in
+    1|yes|true|on) PACKAGED_MODE=1 ;;
+    *) PACKAGED_MODE=0 ;;
+esac
+
 case "$PLATFORM" in
     arch)
         PROGRAM_NAME="github520-arch"
@@ -65,7 +70,15 @@ VERSION="v1.0-milestone.2"
 RELEASE_CHANNEL="milestone"
 SCRIPT_NAME=${0##*/}
 SELF=""
-LIB_INSTALL_DIR="/usr/local/lib/$PROGRAM_NAME"
+if [ "$PACKAGED_MODE" -eq 1 ] && [ "$PLATFORM" = "arch" ]; then
+    INSTALL_PATH="/usr/bin/$PROGRAM_NAME"
+    LEGACY_INSTALL_PATH=""
+    LIB_INSTALL_DIR="/usr/lib/$PROGRAM_NAME"
+    UNIT_DIR="/usr/lib/systemd/system"
+else
+    LIB_INSTALL_DIR="/usr/local/lib/$PROGRAM_NAME"
+    UNIT_DIR="/etc/systemd/system"
+fi
 HOSTS_FILE="/etc/hosts"
 RESOLV_FILE="/etc/resolv.conf"
 UPDATE_LOG="$LOG_DIR/update.log"
@@ -308,12 +321,14 @@ Usage:
   ${PROGRAM_NAME}                 # show status and a short help hint
 
 Installation:
-  Run ./install.sh from the cloned repository.
+  Source checkout : run ./install.sh from the cloned repository.
+  Arch package    : run sudo ${PROGRAM_NAME} install.
   Direct installation through a repository copy of this script is rejected.
 
 Commands:
-  install, --install             Install via ./install.sh. The installed CLI
-                                 may redeploy; repository copies are rejected.
+  install, --install             Apply hosts, optional network settings and
+                                 enable the timer. Source copies must use
+                                 ./install.sh; the installed CLI may redeploy.
   reinstall                      Re-run the installer using the installed
                                  script (same as install).
   update, refresh, --update      Immediately download and refresh /etc/hosts.
@@ -321,10 +336,11 @@ Commands:
                                  last log line and backup count.
   logs [-f]                      Show the update log; -f follows it.
   restore [latest|original|FILE] Restore /etc/hosts from a backup.
-  --uninstall                    Remove the CLI and systemd units, but keep
-                                 /etc/hosts, logs and backups.
+  --uninstall                    Disable the timer and remove the CLI/units
+                                 for a source install; package files remain.
   --uninstall-completely         Restore the original /etc/hosts, then remove
-                                 the CLI, units, logs, backups and temp files.
+                                 logs, backups and temp files. Package files
+                                 remain and must be removed with pacman.
   version, --version             Show version.
   help, --help                   Show this help.
 
@@ -2307,6 +2323,14 @@ apply_hosts_update() {
 install_script_copy() {
     local src lib_src lib_file
 
+    if [ "$PACKAGED_MODE" -eq 1 ]; then
+        [ -x "$INSTALL_PATH" ] || die "Package-managed CLI is missing: $INSTALL_PATH"
+        [ -f "$LIB_INSTALL_DIR/github520-common.sh" ] || \
+            die "Package-managed shared library is missing: $LIB_INSTALL_DIR"
+        log "Using package-managed CLI: $INSTALL_PATH"
+        return 0
+    fi
+
     src=$(readlink -f -- "$0" 2>/dev/null || true)
     [ -n "$src" ] || src="$PWD/$0"
 
@@ -2337,13 +2361,18 @@ install_script_copy() {
 }
 
 install_timer() {
-    local service_file="/etc/systemd/system/$SERVICE_NAME"
-    local timer_file="/etc/systemd/system/$TIMER_NAME"
+    local service_file="$UNIT_DIR/$SERVICE_NAME"
+    local timer_file="$UNIT_DIR/$TIMER_NAME"
 
     install_script_copy
 
-    log "Writing systemd units..."
-    cat > "$service_file" <<EOF
+    if [ "$PACKAGED_MODE" -eq 1 ]; then
+        [ -f "$service_file" ] || die "Packaged service unit is missing: $service_file"
+        [ -f "$timer_file" ] || die "Packaged timer unit is missing: $timer_file"
+        log "Using packaged systemd units from $UNIT_DIR."
+    else
+        log "Writing systemd units..."
+        cat > "$service_file" <<EOF
 [Unit]
 Description=Update GitHub520 hosts entries
 Documentation=https://github.com/WS-CatGirl/github520-deploy
@@ -2358,7 +2387,7 @@ Nice=10
 TimeoutStartSec=900
 EOF
 
-    cat > "$timer_file" <<EOF
+        cat > "$timer_file" <<EOF
 [Unit]
 Description=Hourly GitHub520 hosts update
 
@@ -2374,7 +2403,9 @@ Unit=$SERVICE_NAME
 WantedBy=timers.target
 EOF
 
-    chmod 0644 "$service_file" "$timer_file"
+        chmod 0644 "$service_file" "$timer_file"
+    fi
+
     systemctl daemon-reload || die "systemctl daemon-reload failed."
     systemctl enable "$TIMER_NAME" >/dev/null || die "Failed to enable $TIMER_NAME."
     systemctl restart "$TIMER_NAME" || die "Failed to start $TIMER_NAME."
@@ -2476,13 +2507,26 @@ restore_hosts_for_complete_uninstall() {
 }
 
 remove_systemd_units() {
-    local service_file="/etc/systemd/system/$SERVICE_NAME"
-    local timer_file="/etc/systemd/system/$TIMER_NAME"
+    local service_file="$UNIT_DIR/$SERVICE_NAME"
+    local timer_file="$UNIT_DIR/$TIMER_NAME"
 
     if command -v systemctl >/dev/null 2>&1; then
         systemctl disable --now "$TIMER_NAME" >/dev/null 2>&1 || true
         systemctl stop "$SERVICE_NAME" >/dev/null 2>&1 || true
         systemctl reset-failed "$SERVICE_NAME" >/dev/null 2>&1 || true
+    fi
+
+    if [ "$PACKAGED_MODE" -eq 1 ]; then
+        rm -rf -- "/etc/systemd/system/$SERVICE_NAME.d" "/etc/systemd/system/$TIMER_NAME.d"
+        rm -f -- "/etc/systemd/system/timers.target.wants/$TIMER_NAME"
+        rm -f -- "/etc/systemd/system/multi-user.target.wants/$SERVICE_NAME"
+
+        if command -v systemctl >/dev/null 2>&1; then
+            systemctl daemon-reload >/dev/null 2>&1 || true
+        fi
+
+        log "Disabled packaged systemd units: $TIMER_NAME, $SERVICE_NAME"
+        return 0
     fi
 
     rm -f -- "$service_file" "$timer_file"
@@ -2498,6 +2542,11 @@ remove_systemd_units() {
 }
 
 remove_installed_cli() {
+    if [ "$PACKAGED_MODE" -eq 1 ]; then
+        log "CLI and shared library are package-managed; leaving them in place."
+        return 0
+    fi
+
     rm -f -- "$INSTALL_PATH" "$LEGACY_INSTALL_PATH"
     log "Removed installed CLI: $INSTALL_PATH"
 
@@ -2540,15 +2589,23 @@ do_uninstall() {
         release_update_lock
         remove_installed_cli
         purge_installation_data
-        printf '\n%s has been completely removed.\n' "$PROGRAM_LABEL"
+        printf '\n%s data has been removed.\n' "$PROGRAM_LABEL"
         printf '/etc/hosts was restored and GitHub520 entries were removed.\n'
+        if [ "$PACKAGED_MODE" -eq 1 ]; then
+            printf 'Package files were left in place; remove them with:\n'
+            printf '  sudo pacman -Rns %s\n' "$PROGRAM_NAME"
+        fi
     else
         remove_installed_cli
-        printf '\n%s CLI and systemd units have been removed.\n' "$PROGRAM_LABEL"
+        printf '\n%s systemd timer has been disabled.\n' "$PROGRAM_LABEL"
         printf 'Kept on purpose:\n'
         printf '  hosts file : %s\n' "$HOSTS_FILE"
         printf '  logs       : %s\n' "$LOG_DIR"
         printf '  backups    : %s\n' "$BACKUP_DIR"
+        if [ "$PACKAGED_MODE" -eq 1 ]; then
+            printf 'Package files were left in place; remove them with:\n'
+            printf '  sudo pacman -Rns %s\n' "$PROGRAM_NAME"
+        fi
         printf 'Use --uninstall-completely to restore hosts and purge all data.\n'
     fi
 }

@@ -1,0 +1,24 @@
+post_install() {
+    cat <<'EOF'
+GitHub520 Arch package installed.
+
+Apply the hosts entries and enable the hourly timer with:
+  sudo github520-arch install
+
+Review /etc/hosts and keep a backup before changing it. Package files are
+managed by pacman; --uninstall only disables the timer and keeps the package.
+EOF
+}
+
+post_upgrade() {
+    post_install
+}
+
+pre_remove() {
+    systemctl disable --now github520-update.timer >/dev/null 2>&1 || true
+    systemctl stop github520-update.service >/dev/null 2>&1 || true
+}
+
+post_remove() {
+    systemctl daemon-reload >/dev/null 2>&1 || true
+}
