@@ -86,6 +86,8 @@ bash bootstrap.sh
 | **GitCode** | `git clone https://gitcode.com/WS_CatGirl/github520-deploy.git` |
 | **Codeberg** | `git clone https://codeberg.org/WS_CatGirl/github520-deploy.git` |
 
+> **反馈与维护说明**：本仓库以 GitHub 为主仓库，**Issue、Bug 报告和功能建议请优先发到 [GitHub Issues](https://github.com/WS-CatGirl/github520-deploy/issues)**。Gitee、GitCode、Codeberg 主要作为代码镜像，会同步代码；Tags、Issues 和 Release 说明等以 GitHub 为准，镜像平台很少单独处理，请不要在多个平台重复提交。
+>
 > **四个源内容相同，任选一个即可，不要重复克隆。**
 >
 > Gitee 的 HTTPS clone 可能要求登录；bootstrap 默认使用 GitCode。
@@ -830,6 +832,8 @@ bash bootstrap.sh
 | **GitCode** | `git clone https://gitcode.com/WS_CatGirl/github520-deploy.git` |
 | **Codeberg** | `git clone https://codeberg.org/WS_CatGirl/github520-deploy.git` |
 
+> **Issues and maintenance**: GitHub is the primary repository. **Please report bugs and feature requests through [GitHub Issues](https://github.com/WS-CatGirl/github520-deploy/issues).** Gitee, GitCode and Codeberg are code mirrors: tags, issues and release notes are handled primarily on GitHub and may not be processed on mirrors. Please do not duplicate issues across platforms.
+>
 > **All four sources contain the same repository. Choose one only; do not clone all four.**
 >
 > Gitee HTTPS clone may require login; bootstrap uses GitCode by default.
