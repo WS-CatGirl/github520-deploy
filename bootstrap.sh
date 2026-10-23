@@ -2,7 +2,7 @@
 # =============================================================================
 # bootstrap.sh
 #
-# Version : v1.1-milestone.1-2
+# Version : v1.2-milestone.1
 #
 # Small bootstrap entry point for github520-deploy.
 #
@@ -21,10 +21,14 @@ export LC_ALL=C
 WORKDIR=""
 REPO_DIR=""
 REPO_URL=""
+AUTH_DIR=""
+ASKPASS_SCRIPT=""
+GITEE_TOKEN_FILE=""
+GITEE_USERNAME=""
 KEEP_CLONE=0
 INSTALL_STARTED=0
 INTERRUPTED=0
-VERSION="v1.1-milestone.1-2"
+VERSION="v1.2-milestone.1"
 RELEASE_CHANNEL="milestone"
 
 info() {
@@ -53,7 +57,7 @@ show_prerelease_notice() {
     printf '============================================================\n'
     printf '[ WARN ] PRE-RELEASE BUILD: %s (%s)\n' "$VERSION" "$RELEASE_CHANNEL"
     printf 'This is not a Stable release. Keep backups and test before use.\n'
-    printf 'Stable v1.1 is expected after RC validation.\n'
+    printf 'Stable v1.2 is expected after RC validation.\n'
     printf '============================================================\n'
     printf '\n'
 }
@@ -101,9 +105,20 @@ prompt_keep_clone() {
     esac
 }
 
+clear_gitee_auth() {
+    if [ -n "${AUTH_DIR:-}" ] && [ -d "$AUTH_DIR" ]; then
+        rm -rf -- "$AUTH_DIR" 2>/dev/null || true
+    fi
+    AUTH_DIR=""
+    ASKPASS_SCRIPT=""
+    GITEE_TOKEN_FILE=""
+}
+
 cleanup() {
     local rc=$?
     trap - EXIT
+
+    clear_gitee_auth
 
     if [ "${INSTALL_STARTED:-0}" -eq 1 ] &&
        [ "${INTERRUPTED:-0}" -ne 1 ] &&
@@ -217,12 +232,129 @@ require_git() {
     ok "Git detected: $(git --version 2>/dev/null || printf 'unknown')"
 }
 
+read_gitee_token_file() {
+    local file=$1
+    local mode=""
+    local token=""
+
+    [ -f "$file" ] || return 1
+
+    mode=$(stat -c '%a' "$file" 2>/dev/null || true)
+    case "$mode" in
+        400|600) ;;
+        *)
+            warn "Gitee token file must have mode 600 or 400: $file (found ${mode:-unknown})"
+            return 1
+            ;;
+    esac
+
+    token=$(tr -d '\r\n' < "$file" 2>/dev/null || true)
+    [ -n "$token" ] || return 1
+    printf '%s' "$token"
+}
+
+prepare_gitee_auth() {
+    local token="${GITEE_TOKEN:-}"
+    local username="${GITEE_USERNAME:-}"
+    local token_file=""
+    local old_umask=""
+
+    clear_gitee_auth
+
+    if [ -z "$token" ]; then
+        token_file="${XDG_CONFIG_HOME:-$HOME/.config}/github520-deploy/gitee-token"
+        if [ -e "$token_file" ]; then
+            token=$(read_gitee_token_file "$token_file" || true)
+        fi
+    fi
+
+    if [ -z "$token" ]; then
+        printf '\nGitee HTTPS may require login.\n'
+        printf 'Create a token: https://gitee.com/profile/personal_access_tokens\n'
+        printf 'Suggested scope: projects (read-only if available).\n'
+        printf 'Token input is hidden; press Enter to try an anonymous clone.\n'
+        printf 'Gitee token: '
+        if ! IFS= read -r -s token < /dev/tty; then
+            die "Failed to read the Gitee token."
+        fi
+        printf '\n'
+        token=${token%$'\r'}
+        if [ -z "$token" ]; then
+            warn "No token provided; trying an anonymous Gitee clone."
+            return 0
+        fi
+    fi
+
+    username=${username//[[:space:]]/}
+    if [ -z "$username" ]; then
+        printf 'Gitee username (token owner): '
+        if ! IFS= read -r username < /dev/tty; then
+            die "Failed to read the Gitee username."
+        fi
+        username=${username//[[:space:]]/}
+    fi
+
+    if [ -z "$username" ]; then
+        warn "No Gitee username provided; token authentication disabled."
+        return 0
+    fi
+
+    old_umask=$(umask)
+    umask 077
+
+    if ! AUTH_DIR=$(mktemp -d "${TMPDIR:-/tmp}/github520-gitee.XXXXXX"); then
+        umask "$old_umask"
+        die "Failed to create a temporary authentication directory."
+    fi
+
+    ASKPASS_SCRIPT="$AUTH_DIR/askpass.sh"
+    GITEE_TOKEN_FILE="$AUTH_DIR/token"
+
+    printf '%s' "$token" > "$GITEE_TOKEN_FILE"
+    chmod 600 "$GITEE_TOKEN_FILE"
+
+    cat > "$ASKPASS_SCRIPT" <<'ASKPASS'
+#!/bin/sh
+set -eu
+
+prompt=${1:-}
+
+case "$prompt" in
+    *[Uu]sername*)
+        [ -n "${GITEE_USERNAME:-}" ] || exit 1
+        printf '%s\n' "$GITEE_USERNAME"
+        ;;
+    *[Pp]assword*|*[Tt]oken*)
+        [ -n "${GITEE_TOKEN_FILE:-}" ] || exit 1
+        [ -r "$GITEE_TOKEN_FILE" ] || exit 1
+        token=$(tr -d '\r\n' < "$GITEE_TOKEN_FILE")
+        [ -n "$token" ] || exit 1
+        printf '%s\n' "$token"
+        ;;
+    *)
+        exit 1
+        ;;
+esac
+ASKPASS
+
+    chmod 700 "$ASKPASS_SCRIPT"
+    GITEE_USERNAME="$username"
+    umask "$old_umask"
+
+    unset token
+    unset GITEE_TOKEN
+
+    ok "Gitee token prepared."
+}
+
 select_source() {
     local choice=""
 
+    clear_gitee_auth
+
     printf '\nSelect a repository source:\n'
     printf '  [1] GitHub\n'
-    printf '  [2] Gitee (Login may be required)\n'
+    printf '  [2] Gitee (HTTPS token supported)\n'
     printf '  [3] GitCode (Recommended for Chinese Users)\n'
     printf '  [4] Codeberg\n'
     printf '  [5] Gitea\n'
@@ -243,6 +375,7 @@ select_source() {
         2)
             REPO_URL="https://gitee.com/wscatgirl/github520-deploy.git"
             ok "Selected Gitee."
+            prepare_gitee_auth
             ;;
         3)
             REPO_URL="https://gitcode.com/WS_CatGirl/github520-deploy.git"
@@ -264,10 +397,21 @@ select_source() {
 
 clone_repository() {
     local attempt
+    local -a clone_cmd=(env "GIT_TERMINAL_PROMPT=0")
+
+    if [ -n "${ASKPASS_SCRIPT:-}" ]; then
+        clone_cmd+=(
+            "GIT_ASKPASS=$ASKPASS_SCRIPT"
+            "GIT_ASKPASS_REQUIRE=force"
+            "GITEE_USERNAME=$GITEE_USERNAME"
+            "GITEE_TOKEN_FILE=$GITEE_TOKEN_FILE"
+        )
+    fi
+    clone_cmd+=(git -c credential.helper= clone --depth 1 --branch main "$REPO_URL" "$REPO_DIR")
 
     for attempt in 1 2 3; do
         info "Cloning $REPO_URL (attempt $attempt/3)..."
-        if GIT_TERMINAL_PROMPT=0 git clone --depth 1 --branch main "$REPO_URL" "$REPO_DIR"; then
+        if "${clone_cmd[@]}"; then
             ok "Repository cloned."
             return 0
         fi
@@ -332,6 +476,7 @@ main() {
     while true; do
         select_source
         if clone_repository; then
+            clear_gitee_auth
             break
         fi
 

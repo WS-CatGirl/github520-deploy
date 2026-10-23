@@ -1,3 +1,10 @@
+github520-deploy (1.2~milestone.1-1) unstable; urgency=medium
+
+  * Add optional Gitee HTTPS token support to bootstrap and askpass.
+  * Keep credentials in private temporary files and remove them after cloning.
+
+ -- WS-CatGirl <wscatgirl@users.noreply.github.com>  Fri, 23 Oct 2026 21:10:00 +0800
+
 github520-deploy (1.1~milestone.1-2) unstable; urgency=medium
 
   * Add the Gitea mirror to documentation and repository links.

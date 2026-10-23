@@ -3,8 +3,8 @@
 # This package is intentionally Arch-only. The generic Linux entry and
 # install.sh are not installed by the package; the CLI is self-contained.
 pkgname=github520-arch
-pkgver=1.1_milestone.1
-pkgrel=2
+pkgver=1.2_milestone.1
+pkgrel=1
 pkgdesc="Manage GitHub520 hosts entries with backups, DNS checks and a systemd timer"
 arch=('any')
 url="https://github.com/WS-CatGirl/github520-deploy"
@@ -17,7 +17,7 @@ optdepends=(
 )
 makedepends=('git')
 install=github520-arch.install
-source=("git+https://github.com/WS-CatGirl/github520-deploy.git#tag=v1.1-milestone.1-2")
+source=("git+https://github.com/WS-CatGirl/github520-deploy.git#tag=v1.2-milestone.1")
 sha256sums=('SKIP')
 
 package() {

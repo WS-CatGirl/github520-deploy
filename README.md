@@ -5,6 +5,7 @@
 | 文件 | 用途 | CLI |
 |---|---|---|
 | **bootstrap.sh** | 引导入口：检查环境、选择仓库源、clone 后调用 `install.sh` | — |
+| **askpass.sh** | Gitee HTTPS token 辅助脚本；bootstrap 也会生成临时副本 | — |
 | **install.sh** | 统一安装入口，自动选择并拉起对应脚本 | — |
 | **Github520-Arch.sh** | Arch Linux 薄入口（`ID=arch`） | `github520-arch` |
 | **github520-deploy.sh** | 通用 Linux 薄入口（非 Arch，systemd） | `github520-deploy` |
@@ -58,11 +59,11 @@
 >
 > **AI 辅助声明**：本项目在编写过程中使用了 AI 编程助手；AI 生成内容不会自动发布，最终版本由维护者审阅后决定。详见 [AI 辅助开发声明](#ai-辅助开发声明)。
 >
-> **发布状态**：当前为 **v1.1-milestone.1-2**（milestone 1），准备进入 RC 阶段；**Stable v1.1** 将在 RC 验证后发布。RC 前仍可能有行为调整，请保留备份。
+> **发布状态**：当前为 **v1.2-milestone.1**（milestone 1），准备进入 RC 阶段；**Stable v1.2** 将在 RC 验证后发布。RC 前仍可能有行为调整，请保留备份。
 >
 > **仓库更新**：新增 `packaging/arch` 与 `packaging/debian` 原生包构建文件；安装原生包不会自动修改 `/etc/hosts`，仍需手动执行 `install` 并确认网络设置。
 >
-> `bootstrap.sh`、`install.sh` 与两个脚本均为 **v1.1-milestone.1-2**，请先备份并在测试机验证。
+> `bootstrap.sh`、`install.sh` 与两个脚本均为 **v1.2-milestone.1**，请先备份并在测试机验证。
 
 ---
 
@@ -93,7 +94,29 @@ bash bootstrap.sh
 >
 > **五个源内容相同，任选一个即可，不要重复克隆。**
 >
-> Gitee 的 HTTPS clone 可能要求登录；bootstrap 默认使用 GitCode。
+> Gitee 的 HTTPS clone 可能要求登录；bootstrap 支持 Gitee token，默认仍使用 GitCode。
+
+### Gitee HTTPS 登录（可选）
+
+Gitee 公开仓库的 HTTPS clone 也可能要求登录。`bootstrap.sh` 选择 Gitee 时，会按以下顺序读取 token：
+
+1. 环境变量 `GITEE_TOKEN`，同时用 `GITEE_USERNAME` 指定 token 所属账号；
+2. `~/.config/github520-deploy/gitee-token`，文件内容只放 token，权限必须是 `600` 或 `400`；
+3. 运行时隐藏输入；直接回车则尝试匿名 clone。
+
+创建 token：<https://gitee.com/profile/personal_access_tokens>，建议只授予 `projects` 读取权限。token 只作为 HTTPS 密码发送给 `gitee.com`，不会写入仓库、命令行参数或日志；临时 `askpass.sh` 和 token 文件会在 clone 成功后删除，即使保留 clone 也会删除。
+
+如果你已经下载了仓库（或单独保存了 `askpass.sh`），可以手动使用：
+
+```bash
+chmod 600 ~/.config/github520-deploy/gitee-token
+export GITEE_USERNAME=你的Gitee用户名
+export GITEE_TOKEN_FILE=~/.config/github520-deploy/gitee-token
+GIT_ASKPASS=./askpass.sh GIT_ASKPASS_REQUIRE=force \
+  git -c credential.helper= clone https://gitee.com/wscatgirl/github520-deploy.git
+```
+
+不要把 token 写进 URL、`.git/config`、脚本或 Issue；如果 token 泄露，立即在 Gitee 设置中撤销并重新生成。
 
 ---
 
@@ -101,6 +124,7 @@ bash bootstrap.sh
 
 - [推荐使用短链：一键引导](#推荐使用短链一键引导)
 - [获取仓库（五选一）](#获取仓库五选一)
+  - [Gitee HTTPS 登录（可选）](#gitee-https-登录可选)
 - [选择哪个脚本](#选择哪个脚本)
 - [Bootstrap 一键引导](#bootstrap-一键引导)
 - [功能对比](#功能对比)
@@ -172,7 +196,7 @@ bash ./install.sh
 说明：
 
 - Git 缺失时只打印对应发行版的安装命令，然后退出；不会自动调用包管理器；
-- 默认源是 GitCode，适合国内网络；Gitee 的 HTTPS clone 可能要求登录；
+- 默认源是 GitCode，适合国内网络；Gitee 的 HTTPS clone 可能要求登录，可选择输入 token；
 - 五个源分别为 GitHub、Gitee、GitCode、Codeberg、Gitea；
 - clone 失败会重试 3 次；仍失败时可 `[r]` 重新选择仓库源，或 `[q]` 退出；
 - 脚本使用 `/dev/tty` 读取选择和安装确认，因此兼容 `curl | bash` 的管道模式；
@@ -591,7 +615,7 @@ sudo github520-deploy --uninstall-completely --force
 - Timer 以 root 执行本地脚本；确保 `/usr/local/bin/github520-arch` 或 `/usr/local/bin/github520-deploy` 归 root 所有且不可被普通用户写入。
 - 脚本不会安装软件包、修改防火墙或 SSH 配置。
 - 两个脚本的 timer 不应当同时启用。
-- 当前为 **v1.1-milestone.1-2**，请保留快照和备份；`bootstrap.sh` 会在正式使用前检查环境。
+- 当前为 **v1.2-milestone.1**，请保留快照和备份；`bootstrap.sh` 会在正式使用前检查环境。
 
 ## AI 辅助开发声明
 
@@ -728,7 +752,7 @@ bash ./install.sh
 
 ### Q17: 这是正式版吗？
 
-不是正式版。当前为 **v1.1-milestone.1-2**，准备进入 RC 阶段；**Stable v1.1** 将在 RC 验证后发布。请先备份并反馈问题。
+不是正式版。当前为 **v1.2-milestone.1**，准备进入 RC 阶段；**Stable v1.2** 将在 RC 验证后发布。请先备份并反馈问题。
 
 ### Q18: 为什么直接运行子脚本安装会被拒绝？
 
@@ -811,11 +835,11 @@ The shared core behind both platform entries provides:
 >
 > **AI assistance**: AI coding assistants were used during development. AI output is not published automatically; the maintainer reviews released content. See [AI-assisted development disclosure](#ai-assisted-development-disclosure).
 >
-> **Release status**: The current version is **v1.1-milestone.1-2** (milestone 1), preparing for the RC phase. **Stable v1.1** is expected after RC validation. Behaviour may still change before RC; keep backups.
+> **Release status**: The current version is **v1.2-milestone.1** (milestone 1), preparing for the RC phase. **Stable v1.2** is expected after RC validation. Behaviour may still change before RC; keep backups.
 >
 > **Repository update**: Native packaging files were added under `packaging/arch` and `packaging/debian`. Installing a package does not modify `/etc/hosts` automatically; run `install` manually and confirm the network options.
 >
-> `bootstrap.sh`, both scripts and `install.sh` are **v1.1-milestone.1-2**.
+> `bootstrap.sh`, both scripts and `install.sh` are **v1.2-milestone.1**.
 
 ## Recommended: short URL
 
@@ -842,7 +866,29 @@ bash bootstrap.sh
 >
 > **All five sources contain the same repository. Choose one only; do not clone all five.**
 >
-> Gitee HTTPS clone may require login; bootstrap uses GitCode by default.
+> Gitee HTTPS clone may require login; bootstrap supports a Gitee token and still uses GitCode by default.
+
+### Gitee HTTPS login (optional)
+
+Gitee may require login even for HTTPS clones of public repositories. When Gitee is selected, `bootstrap.sh` reads the token in this order:
+
+1. `GITEE_TOKEN`, with `GITEE_USERNAME` for the token owner;
+2. `~/.config/github520-deploy/gitee-token` (token only; mode must be `600` or `400`);
+3. A hidden prompt; press Enter to try an anonymous clone.
+
+Create a token at <https://gitee.com/profile/personal_access_tokens> and grant only `projects` read access if possible. The token is sent only to `gitee.com` as the HTTPS password. It is never written to the repository, command-line arguments or logs. The temporary `askpass.sh` and token file are removed after a successful clone, even if the clone is kept.
+
+Manual clones can use the repository's `askpass.sh` once you have a checkout or have saved the file separately:
+
+```bash
+chmod 600 ~/.config/github520-deploy/gitee-token
+export GITEE_USERNAME=your-gitee-username
+export GITEE_TOKEN_FILE=~/.config/github520-deploy/gitee-token
+GIT_ASKPASS=./askpass.sh GIT_ASKPASS_REQUIRE=force \
+  git -c credential.helper= clone https://gitee.com/wscatgirl/github520-deploy.git
+```
+
+Never put the token in a URL, `.git/config`, a script or an issue. Revoke and regenerate it immediately if it leaks.
 
 ## Which script?
 
@@ -877,7 +923,7 @@ check Linux / Bash 4+ / curl / /dev/tty / git
 ```
 
 - If git is missing, it prints distro-specific install commands and exits; it never installs packages automatically.
-- GitCode is the default source and works anonymously in China; Gitee HTTPS clone may require login.
+- GitCode is the default source and works anonymously in China; Gitee HTTPS clone may require login and can use the optional token flow.
 - The five sources are GitHub, Gitee, GitCode, Codeberg and Gitea.
 - Clone failures are retried three times; if all fail, `[r]` selects another source and `[q]` quits.
 - `/dev/tty` is used for selection and installation so piped usage still works.
@@ -1185,7 +1231,7 @@ Complete uninstall restores the pre-install hosts, removes CLI/units, logs, back
 - Downloads are HTTPS-only; redirects from HTTPS to HTTP are refused.
 - Keep the installed CLI root-owned and non-writable by unprivileged users.
 - Do not enable both timers on the same machine.
-- Milestone software: keep snapshots and backups. Stable v1.1 is expected after RC validation.
+- Milestone software: keep snapshots and backups. Stable v1.2 is expected after RC validation.
 
 ## AI-assisted development disclosure
 
@@ -1306,7 +1352,7 @@ bash ./install.sh
 
 ### 17. Is this stable?
 
-No. The current version is **v1.1-milestone.1-2**, preparing for RC. **Stable v1.1** is expected after RC validation. Keep backups and report issues.
+No. The current version is **v1.2-milestone.1**, preparing for RC. **Stable v1.2** is expected after RC validation. Keep backups and report issues.
 
 ### 18. Why is direct child installation rejected?
 

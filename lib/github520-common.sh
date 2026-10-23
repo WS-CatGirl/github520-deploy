@@ -2,7 +2,7 @@
 # =============================================================================
 # github520-common.sh
 #
-# Version : v1.1-milestone.1-2
+# Version : v1.2-milestone.1
 #
 # Shared implementation for both GitHub520 Linux managers.
 #
@@ -66,7 +66,7 @@ case "$PLATFORM" in
         ;;
 esac
 
-VERSION="v1.1-milestone.1-2"
+VERSION="v1.2-milestone.1"
 RELEASE_CHANNEL="milestone"
 SCRIPT_NAME=${0##*/}
 SELF=""
@@ -311,7 +311,7 @@ show_prerelease_notice() {
     printf '============================================================\n'
     printf '[ WARN ] PRE-RELEASE BUILD: %s (%s)\n' "$VERSION" "$RELEASE_CHANNEL"
     printf 'This is not a Stable release. Keep backups and test before use.\n'
-    printf 'Stable v1.1 is expected after RC validation.\n'
+    printf 'Stable v1.2 is expected after RC validation.\n'
     printf '============================================================\n'
     printf '%s\n' "$C_RESET"
 }
@@ -2867,8 +2867,8 @@ EOF
     printf '  感谢安装和使用，喵～ Ciallo～(∠・ω< )⌒★\n'
     printf '  Thank you for installing %s!\n' "$PROGRAM_LABEL"
     printf '\n'
-    printf '  提示：这是 v1.1-milestone.1-2 预发布版本，请先备份重要配置；遇到问题欢迎反馈。\n'
-    printf '  Note: this is the v1.1-milestone.1-2 pre-release. Keep backups and report any issues.\n'
+    printf '  提示：这是 v1.2-milestone.1 预发布版本，请先备份重要配置；遇到问题欢迎反馈。\n'
+    printf '  Note: this is the v1.2-milestone.1 pre-release. Keep backups and report any issues.\n'
     printf '\n'
 }
 
