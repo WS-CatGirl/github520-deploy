@@ -1,0 +1,18 @@
+#!/bin/sh
+set -e
+
+if [ "$1" = "configure" ]; then
+    cat <<'EOF'
+GitHub520 Debian package installed.
+
+Next steps:
+  sudo github520-deploy install   # apply hosts and enable the hourly timer
+  sudo github520-deploy update    # refresh hosts immediately
+  github520-deploy status         # show timer and hosts state
+
+To remove: run "sudo github520-deploy --uninstall-completely" first, then
+"sudo apt remove --purge github520-deploy".
+EOF
+fi
+
+exit 0

@@ -4,12 +4,12 @@
 # install.sh are not installed by the package; the CLI is self-contained.
 pkgname=github520-arch
 pkgver=1.0_milestone.2
-pkgrel=1
+pkgrel=2
 pkgdesc="Manage GitHub520 hosts entries with backups, DNS checks and a systemd timer"
 arch=('any')
 url="https://github.com/WS-CatGirl/github520-deploy"
 license=('MIT')
-depends=('bash' 'curl' 'iproute2' 'gawk' 'util-linux' 'systemd')
+depends=('bash' 'curl' 'ca-certificates' 'iproute2' 'gawk' 'util-linux' 'systemd')
 optdepends=(
     'btrfs-progs: Btrfs snapshots'
     'snapper: snapshot support'

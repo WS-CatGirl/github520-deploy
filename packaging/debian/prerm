@@ -1,0 +1,9 @@
+#!/bin/sh
+set -e
+
+if [ "$1" = "remove" ] || [ "$1" = "deconfigure" ]; then
+    systemctl disable --now github520-deploy-update.timer >/dev/null 2>&1 || true
+    systemctl stop github520-deploy-update.service >/dev/null 2>&1 || true
+fi
+
+exit 0

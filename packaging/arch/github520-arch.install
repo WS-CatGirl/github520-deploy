@@ -2,11 +2,13 @@ post_install() {
     cat <<'EOF'
 GitHub520 Arch package installed.
 
-Apply the hosts entries and enable the hourly timer with:
-  sudo github520-arch install
+Next steps:
+  sudo github520-arch install   # apply hosts and enable the hourly timer
+  sudo github520-arch update    # refresh hosts immediately
+  github520-arch status         # show timer and hosts state
 
-Review /etc/hosts and keep a backup before changing it. Package files are
-managed by pacman; --uninstall only disables the timer and keeps the package.
+To remove: run "sudo github520-arch --uninstall-completely" first, then
+"sudo pacman -Rns github520-arch".
 EOF
 }
 

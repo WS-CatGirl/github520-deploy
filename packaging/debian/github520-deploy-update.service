@@ -1,0 +1,12 @@
+[Unit]
+Description=Update GitHub520 hosts entries
+Documentation=https://github.com/WS-CatGirl/github520-deploy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/github520-deploy --update --systemd
+Environment=LC_ALL=C
+Nice=10
+TimeoutStartSec=900

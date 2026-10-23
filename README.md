@@ -60,6 +60,8 @@
 >
 > **发布状态**：当前为 **v1.0-milestone.2**（milestone 2），准备进入 RC 阶段；预计 **2026-10-25** 发布 **Stable v1.0**。RC 前仍可能有行为调整，请保留备份。
 >
+> **仓库更新**：新增 `packaging/arch` 与 `packaging/debian` 原生包构建文件；安装原生包不会自动修改 `/etc/hosts`，仍需手动执行 `install` 并确认网络设置。
+>
 > `bootstrap.sh`、`install.sh` 与两个脚本均为 **v1.0-milestone.2**，请先备份并在测试机验证。
 
 ---
@@ -809,6 +811,8 @@ The shared core behind both platform entries provides:
 > **AI assistance**: AI coding assistants were used during development. AI output is not published automatically; the maintainer reviews released content. See [AI-assisted development disclosure](#ai-assisted-development-disclosure).
 >
 > **Release status**: The current version is **v1.0-milestone.2** (milestone 2), preparing for the RC phase. **Stable v1.0** is expected on **2026-10-25**. Behaviour may still change before RC; keep backups.
+>
+> **Repository update**: Native packaging files were added under `packaging/arch` and `packaging/debian`. Installing a package does not modify `/etc/hosts` automatically; run `install` manually and confirm the network options.
 >
 > `bootstrap.sh`, both scripts and `install.sh` are **v1.0-milestone.2**.
 

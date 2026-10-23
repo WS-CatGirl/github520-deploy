@@ -1,0 +1,7 @@
+github520-deploy (1.0~milestone.2-2) unstable; urgency=medium
+
+  * Package the generic Linux entry for Debian and Ubuntu.
+  * Install the CLI, shared library, systemd units and documentation.
+  * Do not enable the timer or modify /etc/hosts during package installation.
+
+ -- WS-CatGirl <wscatgirl@users.noreply.github.com>  Fri, 23 Oct 2026 00:00:00 +0800

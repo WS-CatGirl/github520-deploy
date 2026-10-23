@@ -70,11 +70,15 @@ VERSION="v1.0-milestone.2"
 RELEASE_CHANNEL="milestone"
 SCRIPT_NAME=${0##*/}
 SELF=""
-if [ "$PACKAGED_MODE" -eq 1 ] && [ "$PLATFORM" = "arch" ]; then
+if [ "$PACKAGED_MODE" -eq 1 ] && { [ "$PLATFORM" = "arch" ] || [ "$PLATFORM" = "generic" ]; }; then
     INSTALL_PATH="/usr/bin/$PROGRAM_NAME"
     LEGACY_INSTALL_PATH=""
     LIB_INSTALL_DIR="/usr/lib/$PROGRAM_NAME"
-    UNIT_DIR="/usr/lib/systemd/system"
+    if [ "$PLATFORM" = "generic" ]; then
+        UNIT_DIR="/lib/systemd/system"
+    else
+        UNIT_DIR="/usr/lib/systemd/system"
+    fi
 else
     LIB_INSTALL_DIR="/usr/local/lib/$PROGRAM_NAME"
     UNIT_DIR="/etc/systemd/system"
@@ -322,7 +326,7 @@ Usage:
 
 Installation:
   Source checkout : run ./install.sh from the cloned repository.
-  Arch package    : run sudo ${PROGRAM_NAME} install.
+  Package         : run sudo ${PROGRAM_NAME} install.
   Direct installation through a repository copy of this script is rejected.
 
 Commands:
@@ -340,7 +344,8 @@ Commands:
                                  for a source install; package files remain.
   --uninstall-completely         Restore the original /etc/hosts, then remove
                                  logs, backups and temp files. Package files
-                                 remain and must be removed with pacman.
+                                 remain and must be removed with the system
+                                 package manager.
   version, --version             Show version.
   help, --help                   Show this help.
 
@@ -352,7 +357,7 @@ Options:
   -f, --follow                   Follow the log (with logs).
       --force                    Skip the confirmation for --uninstall-completely.
 
-Install flow (started by install.sh):
+Install flow (started by install.sh or the installed CLI):
   1. Welcome
   2. Root/sudo check
   3. ${PLATFORM_CHECK_DESC}
@@ -2593,7 +2598,11 @@ do_uninstall() {
         printf '/etc/hosts was restored and GitHub520 entries were removed.\n'
         if [ "$PACKAGED_MODE" -eq 1 ]; then
             printf 'Package files were left in place; remove them with:\n'
-            printf '  sudo pacman -Rns %s\n' "$PROGRAM_NAME"
+            if [ "$PLATFORM" = "arch" ]; then
+                printf '  sudo pacman -Rns %s\n' "$PROGRAM_NAME"
+            else
+                printf '  sudo apt remove --purge %s\n' "$PROGRAM_NAME"
+            fi
         fi
     else
         remove_installed_cli
@@ -2604,7 +2613,11 @@ do_uninstall() {
         printf '  backups    : %s\n' "$BACKUP_DIR"
         if [ "$PACKAGED_MODE" -eq 1 ]; then
             printf 'Package files were left in place; remove them with:\n'
-            printf '  sudo pacman -Rns %s\n' "$PROGRAM_NAME"
+            if [ "$PLATFORM" = "arch" ]; then
+                printf '  sudo pacman -Rns %s\n' "$PROGRAM_NAME"
+            else
+                printf '  sudo apt remove --purge %s\n' "$PROGRAM_NAME"
+            fi
         fi
         printf 'Use --uninstall-completely to restore hosts and purge all data.\n'
     fi

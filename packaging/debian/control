@@ -1,0 +1,17 @@
+Package: github520-deploy
+Version: 1.0~milestone.2-2
+Architecture: all
+Maintainer: WS-CatGirl <wscatgirl@users.noreply.github.com>
+Installed-Size: 160
+Depends: bash, curl, ca-certificates, iproute2, gawk, util-linux, systemd
+Recommends: btrfs-progs, snapper, sudo
+Section: admin
+Priority: optional
+Homepage: https://github.com/WS-CatGirl/github520-deploy
+Description: GitHub520 hosts manager with backups and a systemd timer
+ GitHub520 Deploy updates the GitHub520 block in /etc/hosts, keeps
+ timestamped backups, can restore the original hosts file, and installs
+ an hourly systemd timer.
+ .
+ The package manages files under /usr and does not modify /etc/hosts
+ automatically. Run "sudo github520-deploy install" after installation.
