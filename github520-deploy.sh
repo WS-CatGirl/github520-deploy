@@ -4,7 +4,7 @@
 #
 # Thin generic Linux entry point for github520-common.sh.
 #
-# Version : v1.1-milestone.1
+# Version : v1.1-milestone.1-2
 # Author  : 白丝小猫娘 (WS-CatGirl)
 #
 # Repositories:
@@ -12,6 +12,7 @@
 #   https://gitee.com/wscatgirl/github520-deploy
 #   https://gitcode.com/WS_CatGirl/github520-deploy
 #   https://codeberg.org/WS_CatGirl/github520-deploy
+#   https://gitea.com/WS-CatGirl/github520-deploy
 # =============================================================================
 
 set -Eeuo pipefail

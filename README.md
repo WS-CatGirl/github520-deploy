@@ -58,11 +58,11 @@
 >
 > **AI 辅助声明**：本项目在编写过程中使用了 AI 编程助手；AI 生成内容不会自动发布，最终版本由维护者审阅后决定。详见 [AI 辅助开发声明](#ai-辅助开发声明)。
 >
-> **发布状态**：当前为 **v1.1-milestone.1**（milestone 1），准备进入 RC 阶段；**Stable v1.1** 将在 RC 验证后发布。RC 前仍可能有行为调整，请保留备份。
+> **发布状态**：当前为 **v1.1-milestone.1-2**（milestone 1），准备进入 RC 阶段；**Stable v1.1** 将在 RC 验证后发布。RC 前仍可能有行为调整，请保留备份。
 >
 > **仓库更新**：新增 `packaging/arch` 与 `packaging/debian` 原生包构建文件；安装原生包不会自动修改 `/etc/hosts`，仍需手动执行 `install` 并确认网络设置。
 >
-> `bootstrap.sh`、`install.sh` 与两个脚本均为 **v1.1-milestone.1**，请先备份并在测试机验证。
+> `bootstrap.sh`、`install.sh` 与两个脚本均为 **v1.1-milestone.1-2**，请先备份并在测试机验证。
 
 ---
 
@@ -591,7 +591,7 @@ sudo github520-deploy --uninstall-completely --force
 - Timer 以 root 执行本地脚本；确保 `/usr/local/bin/github520-arch` 或 `/usr/local/bin/github520-deploy` 归 root 所有且不可被普通用户写入。
 - 脚本不会安装软件包、修改防火墙或 SSH 配置。
 - 两个脚本的 timer 不应当同时启用。
-- 当前为 **v1.1-milestone.1**，请保留快照和备份；`bootstrap.sh` 会在正式使用前检查环境。
+- 当前为 **v1.1-milestone.1-2**，请保留快照和备份；`bootstrap.sh` 会在正式使用前检查环境。
 
 ## AI 辅助开发声明
 
@@ -728,7 +728,7 @@ bash ./install.sh
 
 ### Q17: 这是正式版吗？
 
-不是正式版。当前为 **v1.1-milestone.1**，准备进入 RC 阶段；**Stable v1.1** 将在 RC 验证后发布。请先备份并反馈问题。
+不是正式版。当前为 **v1.1-milestone.1-2**，准备进入 RC 阶段；**Stable v1.1** 将在 RC 验证后发布。请先备份并反馈问题。
 
 ### Q18: 为什么直接运行子脚本安装会被拒绝？
 
@@ -811,11 +811,11 @@ The shared core behind both platform entries provides:
 >
 > **AI assistance**: AI coding assistants were used during development. AI output is not published automatically; the maintainer reviews released content. See [AI-assisted development disclosure](#ai-assisted-development-disclosure).
 >
-> **Release status**: The current version is **v1.1-milestone.1** (milestone 1), preparing for the RC phase. **Stable v1.1** is expected after RC validation. Behaviour may still change before RC; keep backups.
+> **Release status**: The current version is **v1.1-milestone.1-2** (milestone 1), preparing for the RC phase. **Stable v1.1** is expected after RC validation. Behaviour may still change before RC; keep backups.
 >
 > **Repository update**: Native packaging files were added under `packaging/arch` and `packaging/debian`. Installing a package does not modify `/etc/hosts` automatically; run `install` manually and confirm the network options.
 >
-> `bootstrap.sh`, both scripts and `install.sh` are **v1.1-milestone.1**.
+> `bootstrap.sh`, both scripts and `install.sh` are **v1.1-milestone.1-2**.
 
 ## Recommended: short URL
 
@@ -1306,7 +1306,7 @@ bash ./install.sh
 
 ### 17. Is this stable?
 
-No. The current version is **v1.1-milestone.1**, preparing for RC. **Stable v1.1** is expected after RC validation. Keep backups and report issues.
+No. The current version is **v1.1-milestone.1-2**, preparing for RC. **Stable v1.1** is expected after RC validation. Keep backups and report issues.
 
 ### 18. Why is direct child installation rejected?
 

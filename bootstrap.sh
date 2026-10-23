@@ -2,7 +2,7 @@
 # =============================================================================
 # bootstrap.sh
 #
-# Version : v1.1-milestone.1
+# Version : v1.1-milestone.1-2
 #
 # Small bootstrap entry point for github520-deploy.
 #
@@ -24,7 +24,7 @@ REPO_URL=""
 KEEP_CLONE=0
 INSTALL_STARTED=0
 INTERRUPTED=0
-VERSION="v1.1-milestone.1"
+VERSION="v1.1-milestone.1-2"
 RELEASE_CHANNEL="milestone"
 
 info() {

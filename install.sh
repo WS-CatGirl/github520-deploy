@@ -15,7 +15,7 @@
 # script runs its own platform/container/VM checks again, so the original
 # welcome and error messages stay unchanged.
 #
-# Version : v1.1-milestone.1
+# Version : v1.1-milestone.1-2
 # Author  : 白丝小猫娘 (WS-CatGirl)
 # =============================================================================
 
@@ -24,7 +24,7 @@ IFS=$'\n\t'
 umask 022
 export LC_ALL=C
 
-VERSION="v1.1-milestone.1"
+VERSION="v1.1-milestone.1-2"
 RELEASE_CHANNEL="milestone"
 SCRIPT_NAME=${0##*/}
 SELF=""
