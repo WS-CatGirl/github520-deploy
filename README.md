@@ -513,6 +513,7 @@ GitHub520 下载并备份、更新 hosts
 ### 风险
 
 - 修改 IP 或重启网络可能中断 SSH；
+- **SSH 环境安全闸门**：检测到 `SSH_CONNECTION`、`SSH_CLIENT`、`SSH_TTY` 或安装器传递的 SSH 标记时，脚本会在进入 IP/DNS 修改前显示鲜红色警告；必须输入**全大写 `YES`**才会继续，其他任何输入都会跳过静态 IP/DNS 修改并继续后续安装；
 - `/etc/resolv.conf` 是符号链接时不会直接覆盖；
 - 没有 IPv4 默认路由时会跳过静态网络配置，hosts 更新继续；
 - 优先使用本地控制台或云控制台。
@@ -737,7 +738,7 @@ Arch 版没有单独的 WSL/容器判断，但要求 systemd 和 `/run/systemd/s
 
 ### Q15: 静态 IP 修改后 SSH 断线？
 
-使用本地/云控制台，查看对应 `/var/backups/github520*` 的 `net-*` 目录，恢复配置并重启网络后端，或恢复快照。
+新版在 SSH 环境下会先显示红色安全警告，必须输入全大写 `YES` 才会进入 IP/DNS 修改；其他输入会直接跳过该步骤。但 `YES` 只表示你确认风险，**不能保证 SSH 不断线**。仍建议优先使用本地/云控制台；如果已经断线，使用控制台查看对应 `/var/backups/github520*` 的 `net-*` 目录，恢复配置并重启网络后端，或恢复快照。
 
 ### Q16: 如何重装/更新脚本？
 
@@ -1171,7 +1172,7 @@ If the root filesystem is not Btrfs, the scripts print a prominent `[ WARN ]` an
 - Generic: ifupdown → NetworkManager → systemd-networkd.
 - Arch: NetworkManager → systemd-networkd → ifupdown.
 
-Static changes back up the old configuration and attempt rollback on verification failure. Changing the IP or restarting an interface can interrupt SSH. If no IPv4 default route exists, static network configuration is skipped and hosts updates continue. For ifupdown only the target IPv4 stanza is rewritten; `inet6` stanzas are preserved, but IPv4 options such as MTU/bridge/bond/VLAN may be lost.
+Static changes back up the old configuration and attempt rollback on verification failure. Changing the IP or restarting an interface can interrupt SSH. When an SSH session is detected, a bright-red warning requires uppercase `YES` before the IP/DNS step; anything else skips that step and continues the remaining installation. This cannot guarantee SSH stays connected, so keep out-of-band access ready. If no IPv4 default route exists, static network configuration is skipped and hosts updates continue. For ifupdown only the target IPv4 stanza is rewritten; `inet6` stanzas are preserved, but IPv4 options such as MTU/bridge/bond/VLAN may be lost.
 
 ### DNS validation and recovery
 
@@ -1337,7 +1338,7 @@ The script exits before modifying hosts. Check network, DNS, proxy, firewall, TL
 
 ### 15. SSH disconnected after a static IP change
 
-Use a local/cloud console, restore from the script's `net-*` backup, restart the network backend, or restore a snapshot.
+The current version shows a red SSH safety warning before IP/DNS changes and requires uppercase `YES`; anything else skips that step. `YES` only confirms the risk and **cannot guarantee** that SSH stays connected. Prefer a local/cloud console. If disconnected, use a console, restore from the script's `net-*` backup, restart the network backend, or restore a snapshot.
 
 ### 16. How do I reinstall/update?
 

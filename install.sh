@@ -162,8 +162,29 @@ resolve_self() {
     fi
 }
 
+detect_ssh_session() {
+    [ "${GITHUB520_SSH_SESSION:-0}" = "1" ] && return 0
+    [ -n "${SSH_CONNECTION:-}" ] && return 0
+    [ -n "${SSH_CLIENT:-}" ] && return 0
+    [ -n "${SSH_TTY:-}" ] && return 0
+
+    local env_file="/proc/${PPID:-0}/environ"
+    [ -r "$env_file" ] || return 1
+    tr '\0' '\n' < "$env_file" 2>/dev/null |
+        grep -E '^(SSH_(CONNECTION|CLIENT|TTY)=|GITHUB520_SSH_SESSION=1)' >/dev/null 2>&1
+}
+
 require_root() {
+    local ssh_session=0
+
+    if detect_ssh_session; then
+        ssh_session=1
+    fi
+
     if [ "$(id -u)" -eq 0 ]; then
+        if [ "$ssh_session" -eq 1 ]; then
+            export GITHUB520_SSH_SESSION=1
+        fi
         if [ -n "${SUDO_USER:-}" ]; then
             log "Running as root via sudo (invoked by $SUDO_USER)."
         else
@@ -181,6 +202,10 @@ require_root() {
         die "sudo authentication failed, or this account cannot use sudo."
     fi
 
+    if [ "$ssh_session" -eq 1 ]; then
+        export GITHUB520_SSH_SESSION=1
+        exec sudo -- env GITHUB520_SSH_SESSION=1 bash "$SELF" "$@"
+    fi
     exec sudo -- bash "$SELF" "$@"
 }
 
