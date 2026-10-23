@@ -375,7 +375,9 @@ confirm_install() {
 check_libraries() {
     local file
 
-    for file in github520-common.sh platform-arch.sh platform-generic.sh; do
+    for file in github520-common.sh core.sh snapshots.sh network.sh ssh.sh \
+        hosts.sh systemd.sh uninstall.sh installer.sh cli.sh \
+        platform-arch.sh platform-generic.sh; do
         if [ ! -f "$SCRIPT_DIR/lib/$file" ]; then
             die "Shared library is missing: $SCRIPT_DIR/lib/$file"
         fi

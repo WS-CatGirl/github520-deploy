@@ -4,7 +4,7 @@
 # install.sh are not installed by the package; the CLI is self-contained.
 pkgname=github520-arch
 pkgver=1.2_milestone.1
-pkgrel=2
+pkgrel=3
 pkgdesc="Manage GitHub520 hosts entries with backups, DNS checks and a systemd timer"
 arch=('any')
 url="https://github.com/WS-CatGirl/github520-deploy"
@@ -17,7 +17,7 @@ optdepends=(
 )
 makedepends=('git')
 install=github520-arch.install
-source=("git+https://github.com/WS-CatGirl/github520-deploy.git#tag=v1.2-milestone.1-2")
+source=("git+https://github.com/WS-CatGirl/github520-deploy.git#tag=v1.2-milestone.1-3")
 sha256sums=('SKIP')
 
 package() {
@@ -26,6 +26,24 @@ package() {
     install -Dm755 Github520-Arch.sh "$pkgdir/usr/bin/github520-arch"
     install -Dm644 lib/github520-common.sh \
         "$pkgdir/usr/lib/github520-arch/github520-common.sh"
+    install -Dm644 lib/core.sh \
+        "$pkgdir/usr/lib/github520-arch/core.sh"
+    install -Dm644 lib/snapshots.sh \
+        "$pkgdir/usr/lib/github520-arch/snapshots.sh"
+    install -Dm644 lib/network.sh \
+        "$pkgdir/usr/lib/github520-arch/network.sh"
+    install -Dm644 lib/ssh.sh \
+        "$pkgdir/usr/lib/github520-arch/ssh.sh"
+    install -Dm644 lib/hosts.sh \
+        "$pkgdir/usr/lib/github520-arch/hosts.sh"
+    install -Dm644 lib/systemd.sh \
+        "$pkgdir/usr/lib/github520-arch/systemd.sh"
+    install -Dm644 lib/uninstall.sh \
+        "$pkgdir/usr/lib/github520-arch/uninstall.sh"
+    install -Dm644 lib/installer.sh \
+        "$pkgdir/usr/lib/github520-arch/installer.sh"
+    install -Dm644 lib/cli.sh \
+        "$pkgdir/usr/lib/github520-arch/cli.sh"
     install -Dm644 lib/platform-arch.sh \
         "$pkgdir/usr/lib/github520-arch/platform-arch.sh"
     install -Dm644 packaging/arch/github520-update.service \

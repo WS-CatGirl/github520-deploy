@@ -32,6 +32,24 @@ install -d "$STAGE/DEBIAN" \
 install -Dm755 "$REPO_ROOT/github520-deploy.sh" "$STAGE/usr/bin/$PKG"
 install -Dm644 "$REPO_ROOT/lib/github520-common.sh" \
     "$STAGE/usr/lib/$PKG/github520-common.sh"
+install -Dm644 "$REPO_ROOT/lib/core.sh" \
+    "$STAGE/usr/lib/$PKG/core.sh"
+install -Dm644 "$REPO_ROOT/lib/snapshots.sh" \
+    "$STAGE/usr/lib/$PKG/snapshots.sh"
+install -Dm644 "$REPO_ROOT/lib/network.sh" \
+    "$STAGE/usr/lib/$PKG/network.sh"
+install -Dm644 "$REPO_ROOT/lib/ssh.sh" \
+    "$STAGE/usr/lib/$PKG/ssh.sh"
+install -Dm644 "$REPO_ROOT/lib/hosts.sh" \
+    "$STAGE/usr/lib/$PKG/hosts.sh"
+install -Dm644 "$REPO_ROOT/lib/systemd.sh" \
+    "$STAGE/usr/lib/$PKG/systemd.sh"
+install -Dm644 "$REPO_ROOT/lib/uninstall.sh" \
+    "$STAGE/usr/lib/$PKG/uninstall.sh"
+install -Dm644 "$REPO_ROOT/lib/installer.sh" \
+    "$STAGE/usr/lib/$PKG/installer.sh"
+install -Dm644 "$REPO_ROOT/lib/cli.sh" \
+    "$STAGE/usr/lib/$PKG/cli.sh"
 install -Dm644 "$REPO_ROOT/lib/platform-generic.sh" \
     "$STAGE/usr/lib/$PKG/platform-generic.sh"
 install -Dm644 /dev/null "$STAGE/usr/lib/$PKG/.packaged"

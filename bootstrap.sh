@@ -430,7 +430,10 @@ check_repository_files() {
     local file
 
     for file in install.sh Github520-Arch.sh github520-deploy.sh \
-        lib/github520-common.sh lib/platform-arch.sh lib/platform-generic.sh; do
+        lib/github520-common.sh lib/core.sh lib/snapshots.sh \
+        lib/network.sh lib/ssh.sh lib/hosts.sh lib/systemd.sh \
+        lib/uninstall.sh lib/installer.sh lib/cli.sh \
+        lib/platform-arch.sh lib/platform-generic.sh; do
         if [ ! -f "$REPO_DIR/$file" ]; then
             die "Required file is missing from the repository: $file"
         fi

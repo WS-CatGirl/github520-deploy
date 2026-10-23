@@ -9,11 +9,20 @@
 | **install.sh** | 统一安装入口，自动选择并拉起对应脚本 | — |
 | **Github520-Arch.sh** | Arch Linux 薄入口（`ID=arch`） | `github520-arch` |
 | **github520-deploy.sh** | 通用 Linux 薄入口（非 Arch，systemd） | `github520-deploy` |
-| **lib/github520-common.sh** | 两个入口共享的公共实现 | — |
+| **lib/github520-common.sh** | 模块加载器；所有实现都在其余 `lib/*.sh` 中 | — |
+| **lib/core.sh** | 全局状态、输出、trap、权限、系统检查和终端辅助 | — |
+| **lib/snapshots.sh** | Btrfs / snapper 快照检测与创建 | — |
+| **lib/network.sh** | 网络后端检测、静态 IPv4/DNS、验证和回滚 | — |
+| **lib/ssh.sh** | SSH 会话/祖先进程检测和红色安全警告 | — |
+| **lib/hosts.sh** | GitHub520 下载、校验、hosts 生成、备份和原子写入 | — |
+| **lib/systemd.sh** | 安装 CLI/模块副本、service 与 timer | — |
+| **lib/uninstall.sh** | hosts 恢复、卸载、彻底清理、状态和日志 | — |
+| **lib/installer.sh** | 安装流程、更新模式和最终摘要 | — |
+| **lib/cli.sh** | 参数解析、安装来源保护和命令分发 | — |
 | **lib/platform-arch.sh** | Arch 平台差异：发行版检查和网络优先级 | — |
 | **lib/platform-generic.sh** | 通用平台差异；当前继承 common 的默认实现 | — |
 
-两个入口现在都是薄壳：`Github520-Arch.sh` / `github520-deploy.sh` 只负责选择平台、加载共享库并调用 `main`。公共逻辑集中在 `lib/github520-common.sh`，避免维护两份约 2800 行的重复脚本。安装后共享库会复制到 `/usr/local/lib/github520-arch/` 或 `/usr/local/lib/github520-deploy/`。
+两个入口现在都是薄壳：`Github520-Arch.sh` / `github520-deploy.sh` 只负责选择平台、加载共享库并调用 `main`。`lib/github520-common.sh` 依次加载 `core.sh`、`snapshots.sh`、`network.sh`、`ssh.sh`、`hosts.sh`、`systemd.sh`、`uninstall.sh`、`installer.sh`、`cli.sh`，避免维护两份重复脚本。安装后共享库会复制到 `/usr/local/lib/github520-arch/` 或 `/usr/local/lib/github520-deploy/`。
 
 `bootstrap.sh` 提供：
 
@@ -326,10 +335,28 @@ sudo /usr/local/bin/github520-deploy status
 ```text
 /usr/local/lib/github520-arch/
   github520-common.sh
+  core.sh
+  snapshots.sh
+  network.sh
+  ssh.sh
+  hosts.sh
+  systemd.sh
+  uninstall.sh
+  installer.sh
+  cli.sh
   platform-arch.sh
 
 /usr/local/lib/github520-deploy/
   github520-common.sh
+  core.sh
+  snapshots.sh
+  network.sh
+  ssh.sh
+  hosts.sh
+  systemd.sh
+  uninstall.sh
+  installer.sh
+  cli.sh
   platform-generic.sh
 ```
 
@@ -786,11 +813,20 @@ This repository contains a bootstrap script, a unified installer, two GitHub520 
 | **install.sh** | Unified installer; detects the platform and launches the right script | — |
 | **Github520-Arch.sh** | Thin Arch Linux entry (`ID=arch`) | `github520-arch` |
 | **github520-deploy.sh** | Thin generic Linux entry (non-Arch, systemd) | `github520-deploy` |
-| **lib/github520-common.sh** | Shared implementation for both entries | — |
+| **lib/github520-common.sh** | Module loader; all implementation lives in the other `lib/*.sh` files | — |
+| **lib/core.sh** | Global state, output, traps, privileges, OS checks and terminal helpers | — |
+| **lib/snapshots.sh** | Btrfs / snapper snapshot detection and creation | — |
+| **lib/network.sh** | Network backend detection, static IPv4/DNS, validation and rollback | — |
+| **lib/ssh.sh** | SSH session/ancestor detection and the red safety warning | — |
+| **lib/hosts.sh** | GitHub520 download, validation, hosts generation, backup and atomic install | — |
+| **lib/systemd.sh** | Installed CLI/module copy, service and timer installation | — |
+| **lib/uninstall.sh** | Hosts restore, uninstall, purge, status and logs | — |
+| **lib/installer.sh** | Installation workflow, update mode and final summary | — |
+| **lib/cli.sh** | Argument parsing, install-source guard and command dispatch | — |
 | **lib/platform-arch.sh** | Arch-specific distribution check and network priority | — |
 | **lib/platform-generic.sh** | Generic platform hook; currently inherits the common defaults | — |
 
-Both entries are now thin wrappers: `Github520-Arch.sh` / `github520-deploy.sh` select the platform, load the shared library and call `main`. Shared logic lives in `lib/github520-common.sh`, so the two ~2800-line copies no longer need to be maintained separately. On installation the shared library is copied to `/usr/local/lib/github520-arch/` or `/usr/local/lib/github520-deploy/`.
+Both entries are now thin wrappers: `Github520-Arch.sh` / `github520-deploy.sh` select the platform, load the shared library and call `main`. `lib/github520-common.sh` loads `core.sh`, `snapshots.sh`, `network.sh`, `ssh.sh`, `hosts.sh`, `systemd.sh`, `uninstall.sh`, `installer.sh` and `cli.sh` in order, so the duplicate scripts no longer need to be maintained. On installation the shared library is copied to `/usr/local/lib/github520-arch/` or `/usr/local/lib/github520-deploy/`.
 
 `bootstrap.sh` provides:
 
@@ -1043,10 +1079,28 @@ The shared libraries required by the entries are installed under:
 ```text
 /usr/local/lib/github520-arch/
   github520-common.sh
+  core.sh
+  snapshots.sh
+  network.sh
+  ssh.sh
+  hosts.sh
+  systemd.sh
+  uninstall.sh
+  installer.sh
+  cli.sh
   platform-arch.sh
 
 /usr/local/lib/github520-deploy/
   github520-common.sh
+  core.sh
+  snapshots.sh
+  network.sh
+  ssh.sh
+  hosts.sh
+  systemd.sh
+  uninstall.sh
+  installer.sh
+  cli.sh
   platform-generic.sh
 ```
 
