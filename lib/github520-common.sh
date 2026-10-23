@@ -2015,6 +2015,27 @@ confirm_action() {
     esac
 }
 
+ssh_ancestor_detected() {
+    local pid=$$ ppid="" comm="" depth=0
+
+    while [ "$pid" -gt 1 ] && [ "$depth" -lt 12 ]; do
+        comm=$(cat "/proc/$pid/comm" 2>/dev/null || true)
+        case "$comm" in
+            sshd|sshd-session|dropbear|mosh-server)
+                return 0
+                ;;
+        esac
+
+        ppid=$(awk '/^PPid:/{print $2; exit}' "/proc/$pid/status" 2>/dev/null || true)
+        [ -n "$ppid" ] || return 1
+        [ "$ppid" -gt 1 ] || return 1
+        pid=$ppid
+        depth=$((depth + 1))
+    done
+
+    return 1
+}
+
 is_ssh_session() {
     [ "${GITHUB520_SSH_SESSION:-0}" = "1" ] && return 0
     [ -n "${SSH_CONNECTION:-}" ] && return 0
@@ -2022,9 +2043,13 @@ is_ssh_session() {
     [ -n "${SSH_TTY:-}" ] && return 0
 
     local env_file="/proc/${PPID:-0}/environ"
-    [ -r "$env_file" ] || return 1
-    tr '\0' '\n' < "$env_file" 2>/dev/null |
-        grep -E '^(SSH_(CONNECTION|CLIENT|TTY)=|GITHUB520_SSH_SESSION=1)' >/dev/null 2>&1
+    if [ -r "$env_file" ] &&
+       tr '\0' '\n' < "$env_file" 2>/dev/null |
+           grep -E '^(SSH_(CONNECTION|CLIENT|TTY)=|GITHUB520_SSH_SESSION=1)' >/dev/null 2>&1; then
+        return 0
+    fi
+
+    ssh_ancestor_detected
 }
 
 show_ssh_warning() {

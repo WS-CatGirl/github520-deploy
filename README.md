@@ -513,7 +513,7 @@ GitHub520 下载并备份、更新 hosts
 ### 风险
 
 - 修改 IP 或重启网络可能中断 SSH；
-- **SSH 环境安全闸门**：检测到 `SSH_CONNECTION`、`SSH_CLIENT`、`SSH_TTY` 或安装器传递的 SSH 标记时，脚本会在进入 IP/DNS 修改前显示鲜红色警告；必须输入**全大写 `YES`**才会继续，其他任何输入都会跳过静态 IP/DNS 修改并继续后续安装；
+- **SSH 环境安全闸门**：检测到 `SSH_CONNECTION`、`SSH_CLIENT`、`SSH_TTY`、安装器传递的 SSH 标记，或进程祖先中有 `sshd` / `sshd-session` / `dropbear` / `mosh-server` 时，脚本会在进入 IP/DNS 修改前显示鲜红色警告；必须输入**全大写 `YES`**才会继续，其他任何输入都会跳过静态 IP/DNS 修改并继续后续安装；
 - `/etc/resolv.conf` 是符号链接时不会直接覆盖；
 - 没有 IPv4 默认路由时会跳过静态网络配置，hosts 更新继续；
 - 优先使用本地控制台或云控制台。
@@ -1172,7 +1172,7 @@ If the root filesystem is not Btrfs, the scripts print a prominent `[ WARN ]` an
 - Generic: ifupdown → NetworkManager → systemd-networkd.
 - Arch: NetworkManager → systemd-networkd → ifupdown.
 
-Static changes back up the old configuration and attempt rollback on verification failure. Changing the IP or restarting an interface can interrupt SSH. When an SSH session is detected, a bright-red warning requires uppercase `YES` before the IP/DNS step; anything else skips that step and continues the remaining installation. This cannot guarantee SSH stays connected, so keep out-of-band access ready. If no IPv4 default route exists, static network configuration is skipped and hosts updates continue. For ifupdown only the target IPv4 stanza is rewritten; `inet6` stanzas are preserved, but IPv4 options such as MTU/bridge/bond/VLAN may be lost.
+Static changes back up the old configuration and attempt rollback on verification failure. Changing the IP or restarting an interface can interrupt SSH. An SSH session is detected from `SSH_CONNECTION`, `SSH_CLIENT`, `SSH_TTY`, the installer marker, or an ancestor process named `sshd`, `sshd-session`, `dropbear` or `mosh-server`. A bright-red warning then requires uppercase `YES` before the IP/DNS step; anything else skips that step and continues the remaining installation. This cannot guarantee SSH stays connected, so keep out-of-band access ready. If no IPv4 default route exists, static network configuration is skipped and hosts updates continue. For ifupdown only the target IPv4 stanza is rewritten; `inet6` stanzas are preserved, but IPv4 options such as MTU/bridge/bond/VLAN may be lost.
 
 ### DNS validation and recovery
 
