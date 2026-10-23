@@ -1,3 +1,10 @@
+github520-deploy (1.2~milestone.1-2) unstable; urgency=medium
+
+  * Detect sshd ancestor processes for the SSH safety gate.
+  * Rebuild with the final v1.2-milestone.1-2 source.
+
+ -- WS-CatGirl <wscatgirl@users.noreply.github.com>  Fri, 23 Oct 2026 22:45:00 +0800
+
 github520-deploy (1.2~milestone.1-1) unstable; urgency=medium
 
   * Add optional Gitee HTTPS token support to bootstrap and askpass.
