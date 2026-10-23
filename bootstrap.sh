@@ -225,7 +225,8 @@ select_source() {
     printf '  [2] Gitee (Login may be required)\n'
     printf '  [3] GitCode (Recommended for Chinese Users)\n'
     printf '  [4] Codeberg\n'
-    printf 'Choice [1-4, default 3]: '
+    printf '  [5] Gitea\n'
+    printf 'Choice [1-5, default 3]: '
 
     if ! IFS= read -r choice < /dev/tty; then
         die "Failed to read the repository selection."
@@ -250,6 +251,10 @@ select_source() {
         4)
             REPO_URL="https://codeberg.org/WS_CatGirl/github520-deploy.git"
             ok "Selected Codeberg."
+            ;;
+        5)
+            REPO_URL="https://gitea.com/WS-CatGirl/github520-deploy.git"
+            ok "Selected Gitea."
             ;;
         *)
             die "Invalid selection: $choice"

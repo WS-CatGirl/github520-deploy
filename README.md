@@ -19,7 +19,7 @@
 - 启动时先显示非 Stable 预发布警告
 - 检查 Linux、Bash 4+、curl、`/dev/tty` 和 git
 - git 缺失时只打印对应发行版安装命令，不自动安装
-- 四个仓库源选择（默认 GitCode）
+- 五个仓库源选择（默认 GitCode）
 - 临时目录 + `git clone --depth 1`
 - 检查 `install.sh`、两个入口和 `lib/` 共享库后，用 `/dev/tty` 启动安装
 
@@ -79,7 +79,7 @@ bash bootstrap.sh
 
 ---
 
-## 获取仓库（四选一）
+## 获取仓库（五选一）
 
 | 源 | 克隆命令 |
 |---|---|
@@ -87,10 +87,11 @@ bash bootstrap.sh
 | **Gitee** | `git clone https://gitee.com/wscatgirl/github520-deploy.git` |
 | **GitCode** | `git clone https://gitcode.com/WS_CatGirl/github520-deploy.git` |
 | **Codeberg** | `git clone https://codeberg.org/WS_CatGirl/github520-deploy.git` |
+| **Gitea** | `git clone https://gitea.com/WS-CatGirl/github520-deploy.git` |
 
-> **反馈与维护说明**：本仓库以 GitHub 为主仓库，**Issue、Bug 报告和功能建议请优先发到 [GitHub Issues](https://github.com/WS-CatGirl/github520-deploy/issues)**。Gitee、GitCode、Codeberg 主要作为代码镜像，会同步代码；Tags、Issues 和 Release 说明等以 GitHub 为准，镜像平台很少单独处理，请不要在多个平台重复提交。
+> **反馈与维护说明**：本仓库以 GitHub 为主仓库，**Issue、Bug 报告和功能建议请优先发到 [GitHub Issues](https://github.com/WS-CatGirl/github520-deploy/issues)**。Gitee、GitCode、Codeberg、Gitea 主要作为代码镜像，会同步代码；Tags、Issues 和 Release 说明等以 GitHub 为准，镜像平台很少单独处理，请不要在多个平台重复提交。
 >
-> **四个源内容相同，任选一个即可，不要重复克隆。**
+> **五个源内容相同，任选一个即可，不要重复克隆。**
 >
 > Gitee 的 HTTPS clone 可能要求登录；bootstrap 默认使用 GitCode。
 
@@ -99,7 +100,7 @@ bash bootstrap.sh
 ## 目录
 
 - [推荐使用短链：一键引导](#推荐使用短链一键引导)
-- [获取仓库（四选一）](#获取仓库四选一)
+- [获取仓库（五选一）](#获取仓库五选一)
 - [选择哪个脚本](#选择哪个脚本)
 - [Bootstrap 一键引导](#bootstrap-一键引导)
 - [功能对比](#功能对比)
@@ -156,7 +157,7 @@ bash ./install.sh
 
 ```text
 检查 Linux / Bash 4+ / curl / /dev/tty / git
-→ 显示四个仓库源
+→ 显示五个仓库源
 → 用户选择
 → mktemp 创建临时目录
 → git clone --depth 1
@@ -172,7 +173,7 @@ bash ./install.sh
 
 - Git 缺失时只打印对应发行版的安装命令，然后退出；不会自动调用包管理器；
 - 默认源是 GitCode，适合国内网络；Gitee 的 HTTPS clone 可能要求登录；
-- 四个源分别为 GitHub、Gitee、GitCode、Codeberg；
+- 五个源分别为 GitHub、Gitee、GitCode、Codeberg、Gitea；
 - clone 失败会重试 3 次；仍失败时可 `[r]` 重新选择仓库源，或 `[q]` 退出；
 - 脚本使用 `/dev/tty` 读取选择和安装确认，因此兼容 `curl | bash` 的管道模式；
 - 安装成功会自动清理临时目录；安装失败时会询问 `[k]` 保留克隆（默认，便于排查）或 `[d]` 删除，选择保留会打印本地仓库路径和之后手动删除的命令；
@@ -226,7 +227,7 @@ https://get.whitesocks-crs.top/bootstrap.sh
 
 ## 安装
 
-使用上方“获取仓库（四选一）”完成克隆后，进入目录并运行统一安装器：
+使用上方“获取仓库（五选一）”完成克隆后，进入目录并运行统一安装器：
 
 ```bash
 cd github520-deploy
@@ -363,7 +364,7 @@ Systemd 内部模式：
   ↓
 检查 Linux / Bash / curl / tty / git
   ↓
-四选一仓库源
+五选一仓库源
   ↓
 临时目录 + git clone --depth 1
   ↓
@@ -375,7 +376,7 @@ bash install.sh < /dev/tty
 ### 统一入口 `install.sh`
 
 ```text
-用户 git clone（四选一）
+用户 git clone（五选一）
   ↓
 bash ./install.sh
   ↓
@@ -771,7 +772,7 @@ Both entries are now thin wrappers: `Github520-Arch.sh` / `github520-deploy.sh` 
 - A non-Stable pre-release warning before doing anything
 - Linux, Bash 4+, curl, `/dev/tty` and git checks
 - Manual-install instructions when git is missing; no automatic package installation
-- Four repository sources (GitCode is the default)
+- Five repository sources (GitCode is the default)
 - Temporary directory + `git clone --depth 1`
 - File checks for `install.sh`, both entries and `lib/`, then launches `install.sh` through `/dev/tty`
 
@@ -827,7 +828,7 @@ bash bootstrap.sh
 
 > The short URL only downloads the bootstrap script; it does not install packages automatically. Review `bootstrap.sh` before running it.
 
-## Get the repository (choose one of four)
+## Get the repository (choose one of five)
 
 | Source | Clone command |
 |---|---|
@@ -835,10 +836,11 @@ bash bootstrap.sh
 | **Gitee** | `git clone https://gitee.com/wscatgirl/github520-deploy.git` |
 | **GitCode** | `git clone https://gitcode.com/WS_CatGirl/github520-deploy.git` |
 | **Codeberg** | `git clone https://codeberg.org/WS_CatGirl/github520-deploy.git` |
+| **Gitea** | `git clone https://gitea.com/WS-CatGirl/github520-deploy.git` |
 
-> **Issues and maintenance**: GitHub is the primary repository. **Please report bugs and feature requests through [GitHub Issues](https://github.com/WS-CatGirl/github520-deploy/issues).** Gitee, GitCode and Codeberg are code mirrors: tags, issues and release notes are handled primarily on GitHub and may not be processed on mirrors. Please do not duplicate issues across platforms.
+> **Issues and maintenance**: GitHub is the primary repository. **Please report bugs and feature requests through [GitHub Issues](https://github.com/WS-CatGirl/github520-deploy/issues).** Gitee, GitCode, Codeberg and Gitea are code mirrors: tags, issues and release notes are handled primarily on GitHub and may not be processed on mirrors. Please do not duplicate issues across platforms.
 >
-> **All four sources contain the same repository. Choose one only; do not clone all four.**
+> **All five sources contain the same repository. Choose one only; do not clone all five.**
 >
 > Gitee HTTPS clone may require login; bootstrap uses GitCode by default.
 
@@ -862,7 +864,7 @@ Do **not** enable both timers on the same machine; both modify `/etc/hosts`.
 
 ```text
 check Linux / Bash 4+ / curl / /dev/tty / git
-→ show four sources
+→ show five sources
 → user selects one
 → create a temporary directory
 → git clone --depth 1
@@ -876,7 +878,7 @@ check Linux / Bash 4+ / curl / /dev/tty / git
 
 - If git is missing, it prints distro-specific install commands and exits; it never installs packages automatically.
 - GitCode is the default source and works anonymously in China; Gitee HTTPS clone may require login.
-- The four sources are GitHub, Gitee, GitCode and Codeberg.
+- The five sources are GitHub, Gitee, GitCode, Codeberg and Gitea.
 - Clone failures are retried three times; if all fail, `[r]` selects another source and `[q]` quits.
 - `/dev/tty` is used for selection and installation so piped usage still works.
 - On success the temporary directory is removed automatically. On failure the bootstrap asks `[k]` to keep the clone (default, useful for troubleshooting) or `[d]` to delete it; keeping it prints the local repository path and a later removal command.
@@ -1037,7 +1039,7 @@ run bootstrap.sh
   ↓
 check Linux / Bash / curl / tty / git
   ↓
-select one of four sources
+select one of five sources
   ↓
 temporary directory + git clone --depth 1
   ↓
@@ -1049,7 +1051,7 @@ bash install.sh < /dev/tty
 ### Unified entry: `install.sh`
 
 ```text
-git clone (one of four sources)
+git clone (one of five sources)
   ↓
 bash ./install.sh
   ↓

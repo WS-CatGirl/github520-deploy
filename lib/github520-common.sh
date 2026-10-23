@@ -105,6 +105,7 @@ REPO_URLS=(
     "https://gitee.com/wscatgirl/github520-deploy"
     "https://gitcode.com/WS_CatGirl/github520-deploy"
     "https://codeberg.org/WS_CatGirl/github520-deploy"
+    "https://gitea.com/WS-CatGirl/github520-deploy"
 )
 HOSTS_SOURCES=(
     "https://raw.hellogithub.com/hosts"
@@ -2854,10 +2855,11 @@ EOF
     printf '    journalctl -u %s\n' "$SERVICE_NAME"
     printf '\n'
     printf '  项目仓库 / Repositories:\n'
-    printf '    GitHub : %s\n' "${REPO_URLS[0]}"
-    printf '    Gitee  : %s\n' "${REPO_URLS[1]}"
-    printf '    GitCode: %s\n' "${REPO_URLS[2]}"
+    printf '    GitHub  : %s\n' "${REPO_URLS[0]}"
+    printf '    Gitee   : %s\n' "${REPO_URLS[1]}"
+    printf '    GitCode : %s\n' "${REPO_URLS[2]}"
     printf '    Codeberg: %s\n' "${REPO_URLS[3]}"
+    printf '    Gitea   : %s\n' "${REPO_URLS[4]}"
     printf '\n'
     printf '  作者 / Author: 白丝小猫娘 (WS-CatGirl)\n'
     printf '  临时文件已清理，备份和日志已保留。\n'
