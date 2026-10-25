@@ -2,7 +2,7 @@
 # =============================================================================
 # bootstrap.sh
 #
-# Version : v1.2-milestone.1
+# Version : v1.0.1-rc
 #
 # Small bootstrap entry point for github520-deploy.
 #
@@ -28,8 +28,8 @@ GITEE_USERNAME=""
 KEEP_CLONE=0
 INSTALL_STARTED=0
 INTERRUPTED=0
-VERSION="v1.2-milestone.1"
-RELEASE_CHANNEL="milestone"
+VERSION="v1.0.1-rc"
+RELEASE_CHANNEL="rc"
 
 info() {
     printf '[ INFO ] %s\n' "$*"
@@ -55,9 +55,9 @@ die() {
 show_prerelease_notice() {
     printf '\n'
     printf '============================================================\n'
-    printf '[ WARN ] PRE-RELEASE BUILD: %s (%s)\n' "$VERSION" "$RELEASE_CHANNEL"
+    printf '[ WARN ] RELEASE CANDIDATE: %s (%s)\n' "$VERSION" "$RELEASE_CHANNEL"
     printf 'This is not a Stable release. Keep backups and test before use.\n'
-    printf 'Stable v1.2 is expected after RC validation.\n'
+    printf 'Stable v1.0.1 is expected after RC validation.\n'
     printf '============================================================\n'
     printf '\n'
 }

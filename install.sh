@@ -15,7 +15,7 @@
 # script runs its own platform/container/VM checks again, so the original
 # welcome and error messages stay unchanged.
 #
-# Version : v1.2-milestone.1
+# Version : v1.0.1-rc
 # Author  : 白丝小猫娘 (WS-CatGirl)
 # =============================================================================
 
@@ -24,8 +24,8 @@ IFS=$'\n\t'
 umask 022
 export LC_ALL=C
 
-VERSION="v1.2-milestone.1"
-RELEASE_CHANNEL="milestone"
+VERSION="v1.0.1-rc"
+RELEASE_CHANNEL="rc"
 SCRIPT_NAME=${0##*/}
 SELF=""
 SCRIPT_DIR=""
@@ -102,9 +102,9 @@ die() {
 show_prerelease_notice() {
     printf '\n%s' "$C_ALERT"
     printf '============================================================\n'
-    printf '[ WARN ] PRE-RELEASE BUILD: %s (%s)\n' "$VERSION" "$RELEASE_CHANNEL"
+    printf '[ WARN ] RELEASE CANDIDATE: %s (%s)\n' "$VERSION" "$RELEASE_CHANNEL"
     printf 'This is not a Stable release. Keep backups and test before use.\n'
-    printf 'Stable v1.2 is expected after RC validation.\n'
+    printf 'Stable v1.0.1 is expected after RC validation.\n'
     printf '============================================================\n'
     printf '%s\n' "$C_RESET"
 }
@@ -404,6 +404,15 @@ check_script() {
     ok "Syntax check passed: $CHILD_SCRIPT"
 }
 
+check_existing_installation() {
+    if ! GITHUB520_FROM_INSTALLER=1 GITHUB520_CHECK_ONLY=1 \
+        bash "$CHILD_PATH" --check-installed; then
+        die "Refusing to install over an existing GitHub520 installation."
+    fi
+
+    ok "No existing GitHub520 installation detected."
+}
+
 launch_child() {
     log "Launching $CHILD_SCRIPT ..."
     log "The selected script will perform its own platform/container/VM checks."
@@ -456,6 +465,11 @@ main() {
     log "Detecting platform."
     detect_platform
     ok "Platform detection complete: $OS_NAME ($ARCH_LABEL)."
+
+    check_libraries
+    check_script
+    check_existing_installation
+
     show_info
 
     log "Waiting for installation confirmation (60-second timeout)."
@@ -465,8 +479,6 @@ main() {
     fi
     ok "Installation confirmed."
 
-    check_libraries
-    check_script
     launch_child
 }
 

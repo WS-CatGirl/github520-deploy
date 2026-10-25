@@ -68,11 +68,11 @@
 >
 > **AI 辅助声明**：本项目在编写过程中使用了 AI 编程助手；AI 生成内容不会自动发布，最终版本由维护者审阅后决定。详见 [AI 辅助开发声明](#ai-辅助开发声明)。
 >
-> **发布状态**：当前为 **v1.2-milestone.1**（milestone 1），准备进入 RC 阶段；**Stable v1.2** 将在 RC 验证后发布。RC 前仍可能有行为调整，请保留备份。
+> **发布状态**：当前为 **v1.0.1-rc**（Release Candidate）；**Stable v1.0.1** 将在 RC 验证后发布。RC 前仍可能有行为调整，请保留备份。
 >
 > **仓库更新**：新增 `packaging/arch` 与 `packaging/debian` 原生包构建文件；安装原生包不会自动修改 `/etc/hosts`，仍需手动执行 `install` 并确认网络设置。
 >
-> `bootstrap.sh`、`install.sh` 与两个脚本均为 **v1.2-milestone.1**，请先备份并在测试机验证。
+> `bootstrap.sh`、`install.sh` 与两个脚本均为 **v1.0.1-rc**，请先备份并在测试机验证。
 
 ---
 
@@ -374,8 +374,8 @@ sudo /usr/local/bin/github520-deploy status
 | 命令 | 说明 |
 |---|---|
 | `sudo <cli>` | 显示状态和简短帮助 |
-| `sudo <cli> install` | 用已安装 CLI 重新部署（仓库安装优先用 `install.sh`） |
-| `sudo <cli> reinstall` | 使用已安装版本重新部署 |
+| `sudo <cli> install` | 首次应用 hosts、网络和 timer；发现已有 CLI、hosts 块或 timer/service 则拒绝 |
+| `sudo <cli> reinstall` | 跳过已安装检测，使用当前 CLI 重新部署 |
 | `sudo <cli> update` | 立即拉取并刷新 hosts |
 | `sudo <cli> refresh` | `update` 别名 |
 | `sudo <cli> status` | 状态、hosts 条目、timer、最近日志、备份数 |
@@ -437,11 +437,13 @@ bash ./install.sh
   ↓
 检测发行版 / 内核 / 架构 / systemd
   ↓
+检查子脚本和模块 + bash -n
+  ↓
+已安装检测（CLI + hosts 块 + timer/service）
+  ↓
 显示系统信息
   ↓
 60 秒倒计时（默认取消）
-  ↓
-检查子脚本存在 + bash -n
   ↓
 按发行版拉起
   ├─ Arch → Github520-Arch.sh install
@@ -459,6 +461,8 @@ bash ./install.sh
   ↓
 root / sudo 检查
   ↓
+已安装检测（CLI + hosts 块 + timer/service；`reinstall` 跳过）
+  ↓
 首次备份原始 /etc/hosts
   ↓
 Btrfs + snapper 可选快照
@@ -475,6 +479,16 @@ GitHub520 下载并备份、更新 hosts
   ↓
 清理临时文件并输出总结
 ```
+
+### 已安装检测
+
+`install.sh` 在确认安装前会预检一次，子脚本在 root 检查之后、备份 hosts 之前还会再检查一次，共三层：
+
+1. **CLI 检测**：检查 `INSTALL_PATH`、`/usr/local/bin/<cli>`、`/usr/bin/<cli>`，以及兼容用的 `.sh` 路径。当前正在运行的 CLI 会被排除，所以包安装后的首次 `install` 不会误判。
+2. **hosts 检测**：检查 `/etc/hosts` 中是否存在 GitHub520 的 start/end 标记；即使块内没有条目也会命中。
+3. **systemd 检测**：检查 `/etc/systemd/system` 下的源码安装 unit，以及 timer/service 是否处于 enabled/active 状态。包自带的 `/usr/lib` 或 `/lib` unit 不算已配置，避免刚装包就被误判。
+
+任一命中都会打印具体原因，并以退出码 1 结束；此时不会备份 hosts、不会修改网络、不会安装 timer。`reinstall` 会显式跳过检测，用于已安装 CLI 的重新部署。
 
 网络后端优先级：
 
@@ -643,7 +657,7 @@ sudo github520-deploy --uninstall-completely --force
 - Timer 以 root 执行本地脚本；确保 `/usr/local/bin/github520-arch` 或 `/usr/local/bin/github520-deploy` 归 root 所有且不可被普通用户写入。
 - 脚本不会安装软件包、修改防火墙或 SSH 配置。
 - 两个脚本的 timer 不应当同时启用。
-- 当前为 **v1.2-milestone.1**，请保留快照和备份；`bootstrap.sh` 会在正式使用前检查环境。
+- 当前为 **v1.0.1-rc**，请保留快照和备份；`bootstrap.sh` 会在正式使用前检查环境。
 
 ## AI 辅助开发声明
 
@@ -701,7 +715,7 @@ cd github520-deploy
 bash ./install.sh
 ```
 
-已安装 CLI 的 `install` / `reinstall` 只用于重新部署。
+已安装 CLI 的 `install` 会先检查是否已有安装，发现冲突就报错退出；`reinstall` 会跳过该检查，用当前 CLI 重新部署。
 
 ### Q4: 命令提示 not found？
 
@@ -769,18 +783,27 @@ Arch 版没有单独的 WSL/容器判断，但要求 systemd 和 `/run/systemd/s
 
 ### Q16: 如何重装/更新脚本？
 
-从仓库重新运行统一安装器：
+如果只是用已安装版本重新部署：
 
 ```bash
+sudo github520-arch reinstall
+# 或
+sudo github520-deploy reinstall
+```
+
+如果要从仓库安装新版本，先完整卸载，再重新运行安装器：
+
+```bash
+sudo github520-arch --uninstall-completely
 cd github520-deploy
 bash ./install.sh
 ```
 
-`reinstall` 只使用已安装 CLI 重新部署，不会从网络下载新版本。
+`install.sh` 默认会检查已有 CLI 和 `/etc/hosts` 里的 GitHub520 块，发现已安装就报错退出；`reinstall` 才会跳过这个检查。`reinstall` 只使用已安装 CLI 重新部署，不会从网络下载新版本。
 
 ### Q17: 这是正式版吗？
 
-不是正式版。当前为 **v1.2-milestone.1**，准备进入 RC 阶段；**Stable v1.2** 将在 RC 验证后发布。请先备份并反馈问题。
+不是正式版。当前为 **v1.0.1-rc**（Release Candidate）；**Stable v1.0.1** 将在 RC 验证后发布。请先备份并反馈问题。
 
 ### Q18: 为什么直接运行子脚本安装会被拒绝？
 
@@ -872,11 +895,11 @@ The shared core behind both platform entries provides:
 >
 > **AI assistance**: AI coding assistants were used during development. AI output is not published automatically; the maintainer reviews released content. See [AI-assisted development disclosure](#ai-assisted-development-disclosure).
 >
-> **Release status**: The current version is **v1.2-milestone.1** (milestone 1), preparing for the RC phase. **Stable v1.2** is expected after RC validation. Behaviour may still change before RC; keep backups.
+> **Release status**: The current version is **v1.0.1-rc** (Release Candidate). **Stable v1.0.1** is expected after RC validation. Behaviour may still change before the stable release; keep backups.
 >
 > **Repository update**: Native packaging files were added under `packaging/arch` and `packaging/debian`. Installing a package does not modify `/etc/hosts` automatically; run `install` manually and confirm the network options.
 >
-> `bootstrap.sh`, both scripts and `install.sh` are **v1.2-milestone.1**.
+> `bootstrap.sh`, both scripts and `install.sh` are **v1.0.1-rc**.
 
 ## Recommended: short URL
 
@@ -1115,8 +1138,8 @@ Replace `<cli>` with `github520-arch` or `github520-deploy`:
 | Command | Description |
 |---|---|
 | `sudo <cli>` | Status and short help |
-| `sudo <cli> install` | Redeploy using the installed CLI (prefer `install.sh` for repository installs) |
-| `sudo <cli> reinstall` | Redeploy using the installed CLI |
+| `sudo <cli> install` | First-time hosts/network/timer setup; refuses if another CLI, hosts block or timer/service exists |
+| `sudo <cli> reinstall` | Skip the existing-install check and redeploy with the current CLI |
 | `sudo <cli> update` | Immediately refresh hosts |
 | `sudo <cli> refresh` | Alias for update |
 | `sudo <cli> status` | Show status, hosts count, timer, last log, backups |
@@ -1162,11 +1185,13 @@ first welcome
   ↓
 distribution / kernel / architecture / systemd detection
   ↓
+file checks + bash -n
+  ↓
+existing-installation check (CLI + hosts block + timer/service)
+  ↓
 system information
   ↓
 60-second countdown (default: cancel)
-  ↓
-file check + bash -n
   ↓
 launch by distribution
   ├─ Arch → Github520-Arch.sh install
@@ -1184,6 +1209,8 @@ distribution check again
   ↓
 root/sudo check
   ↓
+existing-installation check (CLI + hosts block + timer/service; skipped by `reinstall`)
+  ↓
 back up original /etc/hosts
   ↓
 optional Btrfs/snapper snapshot
@@ -1200,6 +1227,16 @@ install CLI + hourly timer
   ↓
 cleanup and summary
 ```
+
+### Existing-installation check
+
+`install.sh` runs a preflight before confirmation, and the child script checks again after the root check and before backing up hosts. There are three layers:
+
+1. **CLI check**: `INSTALL_PATH`, `/usr/local/bin/<cli>`, `/usr/bin/<cli>` and the legacy `.sh` path. The CLI currently running is excluded, so the first `install` after a package install is not treated as a conflict.
+2. **Hosts check**: the GitHub520 start/end markers in `/etc/hosts`; a block with no entries still counts.
+3. **systemd check**: source-install units under `/etc/systemd/system`, plus whether the timer/service is enabled or active. Packaged units under `/usr/lib` or `/lib` are not treated as configured, so a freshly installed package does not produce a false conflict.
+
+Any match prints the reason(s) and exits with status 1. No hosts backup, network change or timer installation happens in that case. `reinstall` explicitly bypasses the check for redeploying an installed CLI.
 
 Network backend priority:
 
@@ -1286,7 +1323,7 @@ Complete uninstall restores the pre-install hosts, removes CLI/units, logs, back
 - Downloads are HTTPS-only; redirects from HTTPS to HTTP are refused.
 - Keep the installed CLI root-owned and non-writable by unprivileged users.
 - Do not enable both timers on the same machine.
-- Milestone software: keep snapshots and backups. Stable v1.2 is expected after RC validation.
+- Release-candidate software: keep snapshots and backups. Stable v1.0.1 is expected after RC validation.
 
 ## AI-assisted development disclosure
 
@@ -1337,7 +1374,7 @@ The paths and unit names differ, but both timers modify `/etc/hosts`. Do not ena
 
 ### 3. Why do the CLIs show status instead of installing?
 
-No arguments show status/help to prevent accidental reinstallation. Use `bash ./install.sh` from the repository; the installed CLI's `install`/`reinstall` only redeploys.
+No arguments show status/help to prevent accidental reinstallation. Use `bash ./install.sh` from the repository; the installed CLI's `install` refuses to overwrite an existing installation, while `reinstall` explicitly bypasses that check.
 
 ### 4. `command not found`
 
@@ -1396,18 +1433,27 @@ The current version shows a red SSH safety warning before IP/DNS changes and req
 
 ### 16. How do I reinstall/update?
 
-Run the unified installer again:
+To redeploy with the installed CLI:
 
 ```bash
+sudo github520-arch reinstall
+# or
+sudo github520-deploy reinstall
+```
+
+To install a newer copy from the repository, uninstall completely first and then run the installer again:
+
+```bash
+sudo github520-arch --uninstall-completely
 cd github520-deploy
 bash ./install.sh
 ```
 
-`reinstall` only redeploys the installed CLI; it does not download a new version.
+`install.sh` checks for an existing CLI and a GitHub520 block in `/etc/hosts` by default, and exits with an error if one is found. Only `reinstall` bypasses that check. `reinstall` uses the installed CLI and does not download a new version.
 
 ### 17. Is this stable?
 
-No. The current version is **v1.2-milestone.1**, preparing for RC. **Stable v1.2** is expected after RC validation. Keep backups and report issues.
+No. The current version is **v1.0.1-rc** (Release Candidate). **Stable v1.0.1** is expected after RC validation. Keep backups and report issues.
 
 ### 18. Why is direct child installation rejected?
 

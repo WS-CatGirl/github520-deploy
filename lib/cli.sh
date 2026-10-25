@@ -12,7 +12,7 @@
 # -----------------------------------------------------------------------------
 usage() {
     cat <<EOF
-${USAGE_TITLE} - GitHub520 manager for ${PLATFORM_DESC} (milestone)
+${USAGE_TITLE} - GitHub520 manager for ${PLATFORM_DESC} (rc)
 
 Usage:
   sudo ${PROGRAM_NAME} [command]
@@ -26,10 +26,10 @@ Installation:
 
 Commands:
   install, --install             Apply hosts, optional network settings and
-                                 enable the timer. Source copies must use
-                                 ./install.sh; the installed CLI may redeploy.
+                                 enable the timer. Refuses if another CLI,
+                                 a hosts block or an active timer/service exists.
   reinstall                      Re-run the installer using the installed
-                                 script (same as install).
+                                 script; bypasses the existing-install check.
   update, refresh, --update      Immediately download and refresh /etc/hosts.
   status                         Show version, hosts count, timer state,
                                  last log line and backup count.
@@ -45,6 +45,8 @@ Commands:
   help, --help                   Show this help.
 
 Internal:
+  --check-installed              Used by install.sh to detect an existing
+                                 installation before asking for confirmation.
   --update --systemd             Used by ${SERVICE_NAME}. Redirects
                                  all output to ${LOG_DIR}/update.log.
 
@@ -56,13 +58,14 @@ Install flow (started by install.sh or the installed CLI):
   1. Welcome
   2. Root/sudo check
   3. ${PLATFORM_CHECK_DESC}
-  4. Optional Btrfs/snapper snapshot
-  5. Network backend detection
-  6. GitHub520 download and /etc/hosts update
-  7. Optional static IPv4/DNS configuration
-  8. DNS validation and recovery
-  9. Install and enable ${TIMER_NAME} (hourly)
- 10. Final summary
+  4. Existing installation check (skipped by reinstall)
+  5. Optional Btrfs/snapper snapshot
+  6. Network backend detection
+  7. GitHub520 download and /etc/hosts update
+  8. Optional static IPv4/DNS configuration
+  9. DNS validation and recovery
+ 10. Install and enable ${TIMER_NAME} (hourly)
+ 11. Final summary
 
 Timer:
   systemctl status ${TIMER_NAME}
@@ -83,8 +86,12 @@ parse_args() {
                 printf '%s %s (%s)\n' "$SCRIPT_NAME" "$VERSION" "$RELEASE_CHANNEL"
                 exit 0
                 ;;
-            install|--install|reinstall)
+            install|--install)
                 COMMAND="install"
+                ;;
+            reinstall)
+                COMMAND="install"
+                REINSTALL=1
                 ;;
             update|refresh|--update|--refresh)
                 COMMAND="update"
@@ -112,6 +119,9 @@ parse_args() {
                             ;;
                     esac
                 fi
+                ;;
+            --check-installed)
+                COMMAND="check-installed"
                 ;;
             --systemd)
                 SYSTEMD_MODE=1
@@ -154,7 +164,9 @@ is_installed_cli() {
 main() {
     local welcome_shown=0
 
-    show_prerelease_notice
+    if [ "${GITHUB520_CHECK_ONLY:-0}" != "1" ]; then
+        show_prerelease_notice
+    fi
 
     SELF=$(readlink -f -- "$0" 2>/dev/null || true)
     [ -n "$SELF" ] || SELF=${0:-}
@@ -170,6 +182,10 @@ main() {
     fi
 
     case "$COMMAND" in
+        check-installed)
+            assert_no_existing_installation
+            exit 0
+            ;;
         status)
             show_status
             exit 0
@@ -191,6 +207,13 @@ main() {
             fi
 
             detect_platform
+
+            if [ "$REINSTALL" -eq 1 ]; then
+                log "Reinstall requested; skipping the existing-installation check."
+            else
+                assert_no_existing_installation
+            fi
+
             run_install
             ;;
         update)

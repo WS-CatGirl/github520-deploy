@@ -56,8 +56,8 @@ case "$PLATFORM" in
         ;;
 esac
 
-VERSION="v1.2-milestone.1"
-RELEASE_CHANNEL="milestone"
+VERSION="v1.0.1-rc"
+RELEASE_CHANNEL="rc"
 # Files copied by install_script_copy and checked by package/source validation.
 GITHUB520_LIB_FILES=(
     "github520-common.sh"
@@ -99,6 +99,11 @@ SYSTEMD_MODE=0
 MANUAL_UPDATE=0
 FOLLOW_LOG=0
 FORCE=0
+REINSTALL=0
+EXISTING_INSTALL_CLI=0
+EXISTING_INSTALL_TIMER=0
+EXISTING_INSTALL_HOSTS=0
+EXISTING_INSTALL_REASONS=()
 RESTORE_TARGET=""
 
 GITHUB520_REPO_URL="https://github.com/521xueweihan/GitHub520"
@@ -314,9 +319,9 @@ EOF
 show_prerelease_notice() {
     printf '\n%s' "$C_ALERT"
     printf '============================================================\n'
-    printf '[ WARN ] PRE-RELEASE BUILD: %s (%s)\n' "$VERSION" "$RELEASE_CHANNEL"
+    printf '[ WARN ] RELEASE CANDIDATE: %s (%s)\n' "$VERSION" "$RELEASE_CHANNEL"
     printf 'This is not a Stable release. Keep backups and test before use.\n'
-    printf 'Stable v1.2 is expected after RC validation.\n'
+    printf 'Stable v1.0.1 is expected after RC validation.\n'
     printf '============================================================\n'
     printf '%s\n' "$C_RESET"
 }

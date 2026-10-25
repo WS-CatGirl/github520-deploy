@@ -8,6 +8,142 @@
 # =============================================================================
 
 # -----------------------------------------------------------------------------
+# Existing installation detection
+# -----------------------------------------------------------------------------
+detect_existing_installation() {
+    local cli="" real="" seen=" " self_real="" self_cmd_real="" starts=0 ends=0
+    local unit="" timer_enabled="" timer_active="" service_enabled="" service_active=""
+    local -a candidates=()
+
+    EXISTING_INSTALL_REASONS=()
+    EXISTING_INSTALL_CLI=0
+    EXISTING_INSTALL_TIMER=0
+    EXISTING_INSTALL_HOSTS=0
+
+    self_real=$(readlink -f -- "${SELF:-$0}" 2>/dev/null || true)
+    [ -n "$self_real" ] || self_real=${SELF:-$0}
+    self_cmd_real=$(command -v -- "$0" 2>/dev/null || true)
+    if [ -n "$self_cmd_real" ]; then
+        self_cmd_real=$(readlink -f -- "$self_cmd_real" 2>/dev/null || printf '%s' "$self_cmd_real")
+    fi
+
+    candidates=(
+        "$INSTALL_PATH"
+        "/usr/local/bin/$PROGRAM_NAME"
+        "/usr/bin/$PROGRAM_NAME"
+        "/usr/local/bin/${PROGRAM_NAME}.sh"
+    )
+    if [ -n "$LEGACY_INSTALL_PATH" ]; then
+        candidates+=("$LEGACY_INSTALL_PATH")
+    fi
+
+    for cli in "${candidates[@]}"; do
+        [ -n "$cli" ] || continue
+        case "$seen" in
+            *" $cli "*) continue ;;
+        esac
+        seen+="$cli "
+
+        [ -e "$cli" ] || continue
+
+        # The CLI currently executing this install is not a conflict.
+        real=$(readlink -f -- "$cli" 2>/dev/null || printf '%s' "$cli")
+        if [ "$real" = "$self_real" ] ||
+           { [ -n "$self_cmd_real" ] && [ "$real" = "$self_cmd_real" ]; }; then
+            continue
+        fi
+
+        EXISTING_INSTALL_CLI=1
+        EXISTING_INSTALL_REASONS+=("CLI found: $cli")
+    done
+
+    if [ -f "$HOSTS_FILE" ]; then
+        starts=$(grep -ciE '^[[:space:]]*#[[:space:]]*github520[[:space:]]+host[[:space:]]+start' "$HOSTS_FILE" 2>/dev/null || true)
+        ends=$(grep -ciE '^[[:space:]]*#[[:space:]]*github520[[:space:]]+host[[:space:]]+end' "$HOSTS_FILE" 2>/dev/null || true)
+        if [ "${starts:-0}" -gt 0 ] || [ "${ends:-0}" -gt 0 ]; then
+            EXISTING_INSTALL_HOSTS=1
+            EXISTING_INSTALL_REASONS+=("Hosts block found in $HOSTS_FILE (start=$starts end=$ends)")
+        fi
+    fi
+
+    # Source installs write their units into /etc/systemd/system. Package
+    # units live under /usr/lib or /lib, so mere package installation is not
+    # treated as configured.
+    for unit in "/etc/systemd/system/$SERVICE_NAME" "/etc/systemd/system/$TIMER_NAME"; do
+        if [ -e "$unit" ]; then
+            EXISTING_INSTALL_TIMER=1
+            EXISTING_INSTALL_REASONS+=("Systemd unit found: $unit")
+        fi
+    done
+
+    if command -v systemctl >/dev/null 2>&1; then
+        timer_enabled=$(systemctl is-enabled "$TIMER_NAME" 2>/dev/null || true)
+        case "$timer_enabled" in
+            enabled|enabled-runtime)
+                EXISTING_INSTALL_TIMER=1
+                EXISTING_INSTALL_REASONS+=("Timer is enabled: $TIMER_NAME")
+                ;;
+        esac
+
+        timer_active=$(systemctl is-active "$TIMER_NAME" 2>/dev/null || true)
+        if [ "$timer_active" = "active" ]; then
+            EXISTING_INSTALL_TIMER=1
+            EXISTING_INSTALL_REASONS+=("Timer is active: $TIMER_NAME")
+        fi
+
+        service_enabled=$(systemctl is-enabled "$SERVICE_NAME" 2>/dev/null || true)
+        case "$service_enabled" in
+            enabled|enabled-runtime)
+                EXISTING_INSTALL_TIMER=1
+                EXISTING_INSTALL_REASONS+=("Service is enabled: $SERVICE_NAME")
+                ;;
+        esac
+
+        service_active=$(systemctl is-active "$SERVICE_NAME" 2>/dev/null || true)
+        if [ "$service_active" = "active" ]; then
+            EXISTING_INSTALL_TIMER=1
+            EXISTING_INSTALL_REASONS+=("Service is active: $SERVICE_NAME")
+        fi
+    fi
+
+    [ "${#EXISTING_INSTALL_REASONS[@]}" -gt 0 ]
+}
+
+assert_no_existing_installation() {
+    local reason=""
+
+    log "Checking for an existing GitHub520 installation."
+
+    if ! detect_existing_installation; then
+        log "No existing GitHub520 installation detected."
+        return 0
+    fi
+
+    err "An existing GitHub520 installation was detected; refusing to install again."
+    for reason in "${EXISTING_INSTALL_REASONS[@]}"; do
+        err "  - $reason"
+    done
+
+    if [ "$EXISTING_INSTALL_CLI" -eq 1 ]; then
+        err "To redeploy the installed CLI: sudo $PROGRAM_NAME reinstall"
+        err "To remove it first: sudo $PROGRAM_NAME --uninstall-completely"
+    elif [ "$EXISTING_INSTALL_TIMER" -eq 1 ]; then
+        err "Disable and remove the existing timer/service first:"
+        err "  sudo systemctl disable --now $TIMER_NAME"
+        err "  sudo rm -f /etc/systemd/system/$SERVICE_NAME /etc/systemd/system/$TIMER_NAME"
+        err "  sudo systemctl daemon-reload"
+        if [ "$EXISTING_INSTALL_HOSTS" -eq 1 ]; then
+            err "Also restore $HOSTS_FILE from a backup or remove the GitHub520 block."
+        fi
+    else
+        err "Restore $HOSTS_FILE from a backup or remove the GitHub520 block manually,"
+        err "then retry the installation."
+    fi
+
+    exit 1
+}
+
+# -----------------------------------------------------------------------------
 # Update mode / installer summary
 # -----------------------------------------------------------------------------
 init_update_log() {
@@ -158,8 +294,8 @@ EOF
     printf '  感谢安装和使用，喵～ Ciallo～(∠・ω< )⌒★\n'
     printf '  Thank you for installing %s!\n' "$PROGRAM_LABEL"
     printf '\n'
-    printf '  提示：这是 v1.2-milestone.1 预发布版本，请先备份重要配置；遇到问题欢迎反馈。\n'
-    printf '  Note: this is the v1.2-milestone.1 pre-release. Keep backups and report any issues.\n'
+    printf '  提示：这是 v1.0.1-rc 预发布版本，请先备份重要配置；遇到问题欢迎反馈。\n'
+    printf '  Note: this is the v1.0.1-rc pre-release. Keep backups and report any issues.\n'
     printf '\n'
 }
 

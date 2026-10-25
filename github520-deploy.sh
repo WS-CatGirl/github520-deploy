@@ -4,7 +4,7 @@
 #
 # Thin generic Linux entry point for github520-common.sh.
 #
-# Version : v1.2-milestone.1
+# Version : v1.0.1-rc
 # Author  : 白丝小猫娘 (WS-CatGirl)
 #
 # Repositories:

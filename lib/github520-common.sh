@@ -4,7 +4,7 @@
 #
 # Loader for the shared modules; all implementation lives in lib/*.sh.
 #
-# Version : v1.2-milestone.1
+# Version : v1.0.1-rc
 #
 # Platform-specific entry points:
 #   lib/platform-arch.sh     Arch Linux (ID=arch)
