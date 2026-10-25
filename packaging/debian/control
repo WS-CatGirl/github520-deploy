@@ -1,8 +1,8 @@
 Package: github520-deploy
-Version: 1.2~milestone.1-3
+Version: 1.0.1~rc
 Architecture: all
 Maintainer: WS-CatGirl <wscatgirl@users.noreply.github.com>
-Installed-Size: 160
+Installed-Size: 204
 Depends: bash, curl, ca-certificates, iproute2, gawk, util-linux, systemd
 Recommends: btrfs-progs, snapper, sudo
 Section: admin
